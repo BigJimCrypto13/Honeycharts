@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Honey Scanner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #0a0a0a; color: #eee; font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; min-height: 100dvh; }
+  header {
+    background: #111;
+    padding: 14px 16px;
+    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+  }
+  .logo { font-size: 22px; font-weight: 700; color: #ffd700; }
+  .search-row { display: flex; gap: 8px; margin-top: 10px; }
+  #search {
+    flex: 1;
+    background: #1a1a1a;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 16px;
+  }
+  #search:focus { outline: none; border-color: #ffd700; }
+  button {
+    background: #ffd700;
+    color: #000;
+    border: none;
+    padding: 12px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #chart-wrapper { flex: 1; min-height: 0; position: relative; }
+  #chart-iframe { width: 100%; height: 100%; border: none; display: none; }
+  .placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #666;
+    text-align: center;
+    padding: 20px;
+  }
+  footer { text-align: center; padding: 8px; color: #555; font-size: 12px; border-top: 1px solid #222; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Honey Scanner</div>
+  <div class="search-row">
+    <input type="text" id="search" placeholder="Paste Solana token address" autofocus>
+    <button id="go">Load Chart</button>
+  </div>
+</header>
+
+<div id="chart-wrapper">
+  <div class="placeholder" id="placeholder">
+    Paste a Solana token contract address and hit Load Chart.
+  </div>
+  <iframe id="chart-iframe" allow="clipboard-write"></iframe>
+</div>
+
+<footer>Honey Scanner • Charts by DexScreener</footer>
+
+<script>
+const search = document.getElementById('search');
+const iframe = document.getElementById('chart-iframe');
+const placeholder = document.getElementById('placeholder');
+
+function loadChart(raw) {
+  if (!raw) return;
+  const ca = raw.trim().split(/[\s\/]/).pop();
+  if (ca.length < 32) {
+    alert('Please paste a full Solana token address');
+    return;
+  }
+  iframe.src = `https://dexscreener.com/solana/${ca}?embed=1&theme=dark&trades=0&info=0`;
+  iframe.style.display = 'block';
+  placeholder.style.display = 'none';
+}
+
+document.getElementById('go').onclick = () => loadChart(search.value);
+search.onkeypress = e => { if (e.key === 'Enter') loadChart(search.value); };
+
+// Load from URL hash if present (for sharing links)
+if (location.hash.length > 40) {
+  const ca = location.hash.slice(1);
+  search.value = ca;
+  loadChart(ca);
+}
+</script>
+</body>
+</html>
