@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Honey Meme Scanner — The Sweetest Charts Around</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: #0a0a0a;
+    color: #f5e6c8;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  header {
+    background: linear-gradient(90deg, #1a1208, #2a1f0f);
+    padding: 12px 16px;
+    border-bottom: 2px solid #d4a017;
+    flex-shrink: 0;
+  }
+  .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .logo {
+    font-size: 24px;
+    font-weight: 800;
+    background: linear-gradient(90deg, #ffd700, #ffb300);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .tagline { font-size: 13px; color: #d4a017; }
+  .search-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  #search {
+    flex: 1;
+    background: #1f1a12;
+    color: #ffd700;
+    border: 1px solid #d4a017;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 16px;
+  }
+  #search:focus { outline: none; border-color: #ffd700; }
+  button#go, .quick-btn {
+    background: #d4a017;
+    color: #000;
+    border: none;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .quick-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .quick-btn {
+    background: #2a2318;
+    color: #ffd700;
+    border: 1px solid #d4a017;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  #chart-wrapper {
+    flex: 1;
+    width: 100%;
+    position: relative;
+    min-height: 0;
+    background: #0a0a0a;
+  }
+  #chart-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+  }
+  .placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #666;
+    text-align: center;
+    padding: 20px;
+  }
+  footer {
+    text-align: center;
+    padding: 8px;
+    color: #666;
+    font-size: 11px;
+    border-top: 1px solid #222;
+    background: #0a0a0a;
+    flex-shrink: 0;
+  }
+  a { color: #d4a017; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top-row">
+    <div>
+      <span class="logo">Honey</span>
+      <span class="tagline">Meme Scanner • The Sweetest Charts</span>
+    </div>
+  </div>
+  <div class="search-row">
+    <input type="text" id="search" placeholder="Paste Solana token CA (pump.fun style) or pair address" value="">
+    <button id="go">Load Chart</button>
+  </div>
+  <div class="quick-row">
+    <button class="quick-btn" data-ca="DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263">BONK</button>
+    <button class="quick-btn" data-ca="EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm">WIF</button>
+    <button class="quick-btn" data-ca="7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr">POPCAT</button>
+    <button class="quick-btn" data-ca="MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5">MEW</button>
+    <a class="quick-btn" href="https://pump.fun" target="_blank" style="text-decoration:none; display:inline-block;">pump.fun</a>
+    <a class="quick-btn" href="https://dexscreener.com/solana" target="_blank" style="text-decoration:none; display:inline-block;">DexScreener Trending</a>
+    <a class="quick-btn" href="https://fomo.family" target="_blank" style="text-decoration:none; display:inline-block;">fomo.family</a>
+  </div>
+</header>
+
+<div id="chart-wrapper">
+  <div class="placeholder" id="placeholder">
+    Paste a Solana token contract address (CA) above to load the live DexScreener chart.<br><br>
+    Works with almost every new pump.fun / meme coin the moment it has liquidity.<br><br>
+    Or click a quick example to try it.
+  </div>
+  <iframe id="chart-iframe" style="display:none;" allow="clipboard-write"></iframe>
+</div>
+
+<footer>
+  Honey Meme Scanner • Charts via DexScreener • Built for fresh Solana memes
+</footer>
+
+<script>
+const searchInput = document.getElementById('search');
+const goBtn = document.getElementById('go');
+const iframe = document.getElementById('chart-iframe');
+const placeholder = document.getElementById('placeholder');
+
+function loadChart(ca) {
+  if (!ca) return;
+  // Clean input — take the address part
+  let clean = ca.trim().split(/[\s\/]/).pop();
+  // Basic length check for Solana address
+  if (clean.length < 32) {
+    alert('Paste a full Solana token CA or pair address');
+    return;
+  }
+
+  const embedUrl = `https://dexscreener.com/solana/${clean}?embed=1&theme=dark&trades=0&info=0`;
+  iframe.src = embedUrl;
+  iframe.style.display = 'block';
+  placeholder.style.display = 'none';
+}
+
+goBtn.addEventListener('click', () => loadChart(searchInput.value));
+searchInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') loadChart(searchInput.value);
+});
+
+document.querySelectorAll('.quick-btn[data-ca]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const ca = btn.dataset.ca;
+    searchInput.value = ca;
+    loadChart(ca);
+  });
+});
+</script>
+</body>
+</html>
