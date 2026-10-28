@@ -12,7 +12,7 @@ import {
 } from "./store.js";
 import { buildHoneyScore } from "./score.js";
 import { mountSwap } from "./swap.js";
-import { pinataConfigured } from "./config.js";
+import { brandLabel, copyrightNotice } from "./config.js";
 import { validateLaunch } from "./launch-form.js";
 import { renderLaunch } from "./launch-ui.js";
 import {
@@ -64,6 +64,7 @@ const launchState = {
     twitter: "",
     telegram: "",
     initialBuy: "0",
+    metadataUri: "",
   },
   imageFile: null,
   errors: [],
@@ -105,6 +106,7 @@ const actions = {
 boot();
 
 function boot() {
+  applyBrand();
   normalizeHash();
   searchForm.addEventListener("submit", onSearch);
   window.addEventListener("popstate", render);
@@ -121,6 +123,13 @@ function boot() {
     hive.clearReset();
   }
   render();
+}
+
+function applyBrand() {
+  const brand = document.querySelector(".brand-name");
+  if (brand) brand.textContent = brandLabel();
+  const line = document.querySelector("[data-copyright]");
+  if (line) line.textContent = copyrightNotice();
 }
 
 function begin() {
@@ -172,10 +181,10 @@ function syncChrome(route) {
   setCurrent(launchLink, route.name === "launch");
   const count = hive.list().length;
   hiveLink.textContent = count ? `Hive (${count})` : "Hive";
-  if (route.name === "home") document.title = "Honeycharts — Solana scanner";
-  if (route.name === "hive") document.title = "Hive · Honeycharts";
-  if (route.name === "launch") document.title = "Launch · Honeycharts";
-  if (route.name === "token") document.title = "Token · Honeycharts";
+  if (route.name === "home") document.title = "Honey Charts — Solana scanner";
+  if (route.name === "hive") document.title = "Hive · Honey Charts";
+  if (route.name === "launch") document.title = "Launch · Honey Charts";
+  if (route.name === "token") document.title = "Token · Honey Charts";
 }
 
 function setCurrent(node, on) {
@@ -447,6 +456,7 @@ function patchLaunch(id, value) {
     "launch-twitter": "twitter",
     "launch-telegram": "telegram",
     "launch-initial-buy": "initialBuy",
+    "launch-metadata": "metadataUri",
   }[id];
   if (!key) return;
   launchState.fields[key] = value;
@@ -516,11 +526,6 @@ async function connectLaunch(choice) {
 async function signLaunch() {
   if (launchState.busy || !launchState.wallet || !launchState.form) return;
   if (!launchState.mainnetConfirmed) return;
-  if (!pinataConfigured()) {
-    launchState.message = "Set PINATA_JWT in js/config.js to a Pinata upload key. The wallet was not asked to sign.";
-    renderLaunchView();
-    return;
-  }
   launchState.busy = true;
   launchState.message = "";
   renderLaunchView();
@@ -847,7 +852,7 @@ function rememberPair(ca, pair) {
 
 function applyTitle(pair) {
   const symbol = clipText(pair && pair.baseToken && pair.baseToken.symbol, 16);
-  document.title = symbol ? `${symbol} · Honeycharts` : "Token · Honeycharts";
+  document.title = symbol ? `${symbol} · Honey Charts` : "Token · Honey Charts";
 }
 
 function mergeStats(incoming) {

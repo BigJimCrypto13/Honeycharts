@@ -1,4 +1,4 @@
-import { PINATA_JWT, launchFeeConfig, pinataConfigured } from "./config.js";
+import { launchFeeConfig } from "./config.js";
 import { pumpMetadata } from "./launch-form.js";
 
 export const CLUSTERS = {
@@ -7,8 +7,8 @@ export const CLUSTERS = {
 
 export const PUMP_PRIORITY_FEE_SOL = 0.00005;
 const PUMP_LOCAL = "https://pumpportal.fun/api/trade-local";
-const PINATA_FILE = "https://api.pinata.cloud/pinning/pinFileToIPFS";
-const PINATA_JSON = "https://api.pinata.cloud/pinning/pinJSONToIPFS";
+const PUMP_IPFS = "https://pump.fun/api/ipfs";
+const LITTERBOX = "https://litterbox.catbox.moe/resources/internals/api.php";
 
 let solanaPromise = null;
 
@@ -45,13 +45,73 @@ export function forgetMint(mint) {
 }
 
 export async function uploadLaunchMetadata(form) {
-  if (!pinataConfigured()) {
-    throw new Error("Set PINATA_JWT in js/config.js to a Pinata upload key before launching. A static site cannot hide that key.");
+  if (form.metadataUri) return form.metadataUri;
+  const fromPump = await tryPumpIpfs(form);
+  if (fromPump) return fromPump;
+  return uploadViaLitterbox(form);
+}
+
+async function tryPumpIpfs(form) {
+  try {
+    const body = new FormData();
+    body.append("file", form.image, fileName(form.image, "token.png"));
+    body.append("name", form.name);
+    body.append("symbol", form.symbol);
+    body.append("description", form.description);
+    body.append("twitter", form.twitter || "");
+    body.append("telegram", form.telegram || "");
+    body.append("website", form.website || "");
+    body.append("showName", "true");
+    const response = await fetch(PUMP_IPFS, { method: "POST", body, signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return "";
+    const payload = await response.json().catch(() => null);
+    const uri = payload && (payload.metadataUri || payload.metadata_uri);
+    return httpsUri(uri);
+  } catch {
+    return "";
   }
-  const imageHash = await pinFile(form.image, PINATA_JWT.trim());
-  const imageUrl = ipfsUri(imageHash);
-  const jsonHash = await pinJson(pumpMetadata(form, imageUrl), PINATA_JWT.trim());
-  return ipfsUri(jsonHash);
+}
+
+async function uploadViaLitterbox(form) {
+  const imageUrl = await uploadLitterboxFile(form.image, fileName(form.image, "token.png"));
+  const json = JSON.stringify(pumpMetadata(form, imageUrl));
+  const metadataFile = new File([json], "metadata.json", { type: "application/json" });
+  return uploadLitterboxFile(metadataFile, "metadata.json");
+}
+
+async function uploadLitterboxFile(file, name) {
+  const body = new FormData();
+  body.append("reqtype", "fileupload");
+  body.append("time", "72h");
+  body.append("fileToUpload", file, name);
+  const response = await fetch(LITTERBOX, { method: "POST", body });
+  const text = (await response.text()).trim();
+  const url = hostedFileUrl(text);
+  if (!response.ok || !url) throw new Error("The image upload did not return a link. Paste an https metadata link and try again.");
+  return url;
+}
+
+export function hostedFileUrl(text) {
+  const value = String(text || "").trim();
+  if (!/^https:\/\/litter\.catbox\.moe\/[A-Za-z0-9]+\.[A-Za-z0-9]{2,5}$/.test(value)) return "";
+  return value;
+}
+
+function httpsUri(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!/^https:\/\/[^\s]+$/.test(text) || text.length > 300) return "";
+  try {
+    const url = new URL(text);
+    if (url.username || url.password || url.protocol !== "https:") return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+function fileName(file, fallback) {
+  const name = file && typeof file.name === "string" ? file.name : "";
+  return /^[A-Za-z0-9._-]{1,80}$/.test(name) ? name : fallback;
 }
 
 export async function prepareLaunch({
@@ -125,42 +185,6 @@ export async function confirmSignature(connection, signature, lastValidBlockHeig
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
   throw new Error("The launch transaction was sent but did not confirm in time.");
-}
-
-async function pinFile(file, jwt) {
-  const body = new FormData();
-  body.append("file", file, file.name || "token.png");
-  const response = await fetch(PINATA_FILE, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${jwt}` },
-    body,
-  });
-  return readPin(response);
-}
-
-async function pinJson(doc, jwt) {
-  const response = await fetch(PINATA_JSON, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${jwt}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ pinataContent: doc }),
-  });
-  return readPin(response);
-}
-
-async function readPin(response) {
-  const payload = await response.json().catch(() => null);
-  const hash = payload && typeof payload.IpfsHash === "string" ? payload.IpfsHash : "";
-  if (!response.ok || !/^[A-Za-z0-9]+$/.test(hash)) {
-    throw new Error("Image and metadata upload failed. Check PINATA_JWT.");
-  }
-  return hash;
-}
-
-function ipfsUri(hash) {
-  return `https://gateway.pinata.cloud/ipfs/${hash}`;
 }
 
 function clip(text) {

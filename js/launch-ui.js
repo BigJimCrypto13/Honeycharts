@@ -1,5 +1,5 @@
 import { el } from "./dom.js";
-import { launchFeeConfig, pinataConfigured } from "./config.js";
+import { launchFeeConfig } from "./config.js";
 import { describeLaunch, imageDownloadName } from "./launch-form.js";
 import { PUMP_PRIORITY_FEE_SOL } from "./launch-tx.js";
 import { tokenPath } from "./paths.js";
@@ -19,12 +19,6 @@ export function renderLaunch(root, state, actions) {
     text: "You are the creator. Honeycharts does not endorse the token, hold your keys, or custody funds. A bonding curve can go to zero. This spends real SOL on mainnet. Not financial advice, DYOR.",
   }));
   page.append(feeNotice());
-  if (!pinataConfigured()) {
-    page.append(el("p", {
-      className: "banner",
-      text: "Image upload needs PINATA_JWT in js/config.js. Until that upload-only key is set, the review screen works but signing will stop before your wallet opens.",
-    }));
-  }
   if (state.message) page.append(el("p", { className: "banner", text: state.message }));
   if (state.errors && state.errors.length) {
     const list = el("ul", { className: "errors" });
@@ -63,6 +57,11 @@ function formPanel(state, actions) {
   form.append(areaField("Description", "launch-description", state.fields.description, actions));
   form.append(textField("Initial buy (SOL)", "launch-initial-buy", state.fields.initialBuy, { inputmode: "decimal", maxlength: "12" }, actions));
   form.append(el("p", { className: "fine", text: "Default is 0. You can buy up to 10 SOL of the new token in the launch transaction." }));
+  form.append(textField("Metadata link (optional)", "launch-metadata", state.fields.metadataUri, { type: "url", placeholder: "https://…" }, actions));
+  form.append(el("p", {
+    className: "fine",
+    text: "Leave this empty and the image is uploaded for you. No API key. Pump.fun's uploader is tried first. If it is blocked, the file is stored for up to 72 hours. Paste your own https metadata link if the image must last longer.",
+  }));
   form.append(textField("Website", "launch-website", state.fields.website, { type: "url", placeholder: "https://…" }, actions));
   form.append(textField("X", "launch-twitter", state.fields.twitter, { type: "url", placeholder: "https://x.com/…" }, actions));
   form.append(textField("Telegram", "launch-telegram", state.fields.telegram, { type: "url", placeholder: "https://t.me/…" }, actions));
@@ -113,7 +112,7 @@ function fileField(state, actions) {
   wrap.append(el("span", {
     className: "fine",
     text: state.imageFile
-      ? `Selected ${imageDownloadName(state.imageFile)}. It is uploaded only when you sign.`
+      ? `Selected ${imageDownloadName(state.imageFile)}. It is uploaded when you sign, unless you pasted a metadata link.`
       : "PNG, JPEG, GIF, or WebP, 1 MB or smaller.",
   }));
   return wrap;

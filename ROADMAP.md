@@ -12,7 +12,7 @@ This is a static site on GitHub Pages. The notes below are the work that shipped
 - Open Graph and Twitter card tags for the site. They describe Honeycharts, not each token. Per-token preview cards need a server.
 - Content Security Policy, address checks, text rendering that does not use raw HTML, and strict Hive import checks.
 - Jupiter swap on the token page, collapsed until you press Swap. It uses Jupiter's official plugin, prefilled SOL to the token on screen, with referral account `6QwK1AUisPZrKHRYuYforGxNnY8hVGMjcvhEWAb5csDU` and a 50 bps fee. Honeycharts does not connect a wallet or sign anything. SOL and USDC fee token accounts still have to exist on referral.jup.ag or Jupiter skips the fee.
-- Launch tab for a Pump.fun bonding-curve token. Mainnet only, one wallet signature, image and metadata uploaded through Pinata when `PINATA_JWT` is set. The same transaction transfers 0.02 SOL to `7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6`. Pump.fun creator rewards stay with the launching wallet. Wallet connection is limited to the Launch tab and starts only from Connect wallet to launch.
+- Launch tab for a Pump.fun bonding-curve token. Mainnet only, one wallet signature. Image and metadata upload needs no API key: Pump.fun's IPFS endpoint is tried first, then Litterbox for up to 72 hours, or a pasted https metadata link. The same transaction transfers 0.02 SOL to `7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6`. Pump.fun creator rewards stay with the launching wallet. Wallet connection is limited to the Launch tab and starts only from Connect wallet to launch.
 
 ## Limits of this version
 

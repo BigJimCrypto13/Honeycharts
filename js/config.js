@@ -49,10 +49,20 @@ export function feeDisclosure() {
 export const LAUNCH_FEE_SOL = 0.02;
 export const LAUNCH_FEE_WALLET = "7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6";
 
-// Pinata upload JWT for the token image and metadata JSON. Leave empty in git.
-// A static site cannot hide this value once you paste it: use an upload-only key.
-export const PINATA_JWT = "";
 export const LAUNCH_FEE_SOL_MAX = 5;
+
+// Display name for the header and the copyright line. Swap this for the
+// owner's LLC legal name later. The trademark mark is added in the page text.
+export const COPYRIGHT_OWNER = "Honey Charts";
+export const COPYRIGHT_YEAR = 2026;
+
+export function brandLabel() {
+  return `${COPYRIGHT_OWNER}™`;
+}
+
+export function copyrightNotice() {
+  return `© ${COPYRIGHT_YEAR} ${COPYRIGHT_OWNER}™. All rights reserved.`;
+}
 
 export function launchFeeConfig() {
   const wallet = typeof LAUNCH_FEE_WALLET === "string" ? LAUNCH_FEE_WALLET.trim() : "";
@@ -61,8 +71,4 @@ export function launchFeeConfig() {
   if (!Number.isFinite(sol) || sol <= 0) return null;
   const capped = Math.min(sol, LAUNCH_FEE_SOL_MAX);
   return { wallet, sol: capped };
-}
-
-export function pinataConfigured() {
-  return typeof PINATA_JWT === "string" && PINATA_JWT.trim().length >= 20;
 }

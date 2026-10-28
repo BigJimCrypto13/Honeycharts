@@ -15,11 +15,12 @@ export function validateLaunch(fields, imageFile) {
   const twitter = cleanUrl(fields && fields.twitter, "X", errors);
   const telegram = cleanUrl(fields && fields.telegram, "Telegram", errors);
   const initialBuySol = cleanInitialBuy(fields && fields.initialBuy, errors);
-  const image = cleanImage(imageFile, errors);
+  const metadataUri = cleanMetadataUri(fields && fields.metadataUri, errors);
+  const image = cleanImage(imageFile, errors, !metadataUri);
   if (errors.length) return { ok: false, errors };
   return {
     ok: true,
-    value: { name, symbol, description, website, twitter, telegram, initialBuySol, image },
+    value: { name, symbol, description, website, twitter, telegram, initialBuySol, image, metadataUri },
   };
 }
 
@@ -40,7 +41,9 @@ export function pumpMetadata(form, imageUrl) {
 
 export function describeLaunch(form, fee) {
   const lines = [
-    "Upload the image and metadata, then create a Pump.fun bonding-curve token that can be traded immediately.",
+    form.metadataUri
+      ? "Use the metadata link you pasted, then create a Pump.fun bonding-curve token that can be traded immediately."
+      : "Upload the image and metadata with no API key, then create a Pump.fun bonding-curve token that can be traded immediately.",
   ];
   if (form.initialBuySol > 0) {
     lines.push(`Buy ${form.initialBuySol} SOL of the new token in the same transaction.`);
@@ -109,9 +112,29 @@ function cleanInitialBuy(value, errors) {
   return amount;
 }
 
-function cleanImage(file, errors) {
+function cleanMetadataUri(value, errors) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return "";
+  if (text.length > 300 || !/^https:\/\/[^\s]+$/.test(text) || /[\u0000-\u001F\u007F]/.test(text)) {
+    errors.push("Metadata link must be an https link, 300 characters or fewer.");
+    return "";
+  }
+  try {
+    const url = new URL(text);
+    if (url.username || url.password) {
+      errors.push("Metadata link must be an https link, 300 characters or fewer.");
+      return "";
+    }
+  } catch {
+    errors.push("Metadata link must be an https link, 300 characters or fewer.");
+    return "";
+  }
+  return text;
+}
+
+function cleanImage(file, errors, required) {
   if (!file) {
-    errors.push("Image is required.");
+    if (required) errors.push("Image is required.");
     return null;
   }
   if (!IMAGE_TYPES.has(file.type)) {

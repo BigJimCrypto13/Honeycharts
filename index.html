@@ -4,21 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0e0c09">
+  <meta name="theme-color" content="#070605">
   <meta name="description" content="Paste a Solana contract address and chart it on Honeycharts, with price, liquidity, a local watchlist, and plain-language risk flags. Not financial advice.">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://plugin.jup.ag; style-src 'self' https://plugin.jup.ag https://fonts.googleapis.com; style-src-elem 'self' https://plugin.jup.ag https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' https://cdn.dexscreener.com https://dd.dexscreener.com https://jup.ag https://station.jup.ag https://wsrv.nl; connect-src 'self' https://api.dexscreener.com https://api.rugcheck.xyz https://api.jup.ag https://ultra-api.jup.ag https://worker.jup.ag https://unified.jup.ag https://plugin.jup.ag https://api.mainnet-beta.solana.com https://api.devnet.solana.com https://pumpportal.fun https://api.pinata.cloud https://fonts.googleapis.com; frame-src https://dexscreener.com https://plugin.jup.ag; font-src 'self' https://plugin.jup.ag https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>Honeycharts — Solana scanner</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://plugin.jup.ag; style-src 'self' https://plugin.jup.ag https://fonts.googleapis.com; style-src-elem 'self' https://plugin.jup.ag https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' https://cdn.dexscreener.com https://dd.dexscreener.com https://jup.ag https://station.jup.ag https://wsrv.nl; connect-src 'self' https://api.dexscreener.com https://api.rugcheck.xyz https://api.jup.ag https://ultra-api.jup.ag https://worker.jup.ag https://unified.jup.ag https://plugin.jup.ag https://api.mainnet-beta.solana.com https://api.devnet.solana.com https://pumpportal.fun https://pump.fun https://litterbox.catbox.moe https://litter.catbox.moe https://fonts.googleapis.com; frame-src https://dexscreener.com https://plugin.jup.ag; font-src 'self' https://plugin.jup.ag https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>Honey Charts — Solana scanner</title>
   <link rel="canonical" href="https://bigjimcrypto13.github.io/Honeycharts/">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Honeycharts">
-  <meta property="og:title" content="Honeycharts — Solana scanner">
-  <meta property="og:description" content="Paste a Solana contract address and chart it on Honeycharts, with price, liquidity, a local watchlist, and plain-language risk flags. Not financial advice.">
+  <meta property="og:site_name" content="Honey Charts">
+  <meta property="og:title" content="Honey Charts — Solana scanner">
+  <meta property="og:description" content="Paste a Solana contract address and chart it on Honey Charts, with price, liquidity, a local watchlist, and plain-language risk flags. Not financial advice.">
   <meta property="og:url" content="https://bigjimcrypto13.github.io/Honeycharts/">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Honeycharts — Solana scanner">
-  <meta name="twitter:description" content="Paste a Solana contract address and chart it on Honeycharts, with price, liquidity, a local watchlist, and plain-language risk flags. Not financial advice.">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta property="og:image" content="https://bigjimcrypto13.github.io/Honeycharts/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Honey Charts — Solana scanner">
+  <meta name="twitter:description" content="Paste a Solana contract address and chart it on Honey Charts, with price, liquidity, a local watchlist, and plain-language risk flags. Not financial advice.">
+  <meta name="twitter:image" content="https://bigjimcrypto13.github.io/Honeycharts/assets/og.png">
+  <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -27,12 +32,9 @@
     <div class="header-inner">
       <div class="brand-row">
         <a class="brand" href="./">
-          <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
-            <path fill="currentColor" d="M16 2 28 9v14L16 30 4 23V9z"/>
-            <path fill="#1a1204" d="M16 8.2 22.2 11.8v7.4L16 22.8l-6.2-3.6v-7.4z"/>
-          </svg>
+          <img class="logo" src="assets/coin.webp" width="48" height="48" alt="" decoding="async">
           <span class="brand-text">
-            <span class="brand-name">Honeycharts</span>
+            <span class="brand-name">Honey Charts™</span>
             <span class="brand-tag">Solana scanner</span>
           </span>
         </a>
@@ -50,6 +52,7 @@
         </div>
       </form>
       <p class="trust">Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving.</p>
+      <div class="honey-drip" aria-hidden="true"></div>
     </div>
   </header>
   <div id="status" class="status" role="status" aria-live="polite"></div>
@@ -59,6 +62,7 @@
     </div>
   </main>
   <footer class="site-footer">
+    <p class="copyright" data-copyright>© 2026 Honey Charts™. All rights reserved.</p>
     <p>Not financial advice. Do your own research. Market data and the chart are from DexScreener. Risk flags also use the public RugCheck report when it loads. Swaps are executed by Jupiter. Honeycharts is not a broker or custodian. Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving.</p>
   </footer>
   <noscript>

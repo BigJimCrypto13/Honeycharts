@@ -21,14 +21,14 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving.
 
 - The scanner and the Hive never connect a wallet. The Swap button only loads Jupiter's plugin. Connecting and approving stay inside that plugin and your wallet extension.
-- The referral fee uses the public referral account in `js/config.js`. The launch fee uses the public address `7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6`. Do not commit a private key, seed phrase, or secret-key file. `PINATA_JWT` stays empty in git.
+- The referral fee uses the public referral account in `js/config.js`. The launch fee uses the public address `7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6`. Do not commit a private key, seed phrase, or secret-key file. Image upload does not use an API key.
 - The Launch tab talks to Phantom or Solflare only after you click Connect wallet to launch. Signing happens in that wallet. Honeycharts does not see wallet secrets. A one-time mint account signature is generated in the browser for that transaction and then discarded.
 - The Hive is local. Nothing in the watchlist is uploaded by this site.
 - Contract addresses must be base58 and 32–44 characters.
 - Text from DexScreener and RugCheck is written as text, not HTML.
 - External links must be `http` or `https`, and they open with `rel="noopener noreferrer"`.
 - Imported Hive files are rejected unless they match the version 1 backup shape.
-- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, PumpPortal, Pinata's upload API, and the Solana RPC hosts `api.mainnet-beta.solana.com` and `api.devnet.solana.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
+- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, PumpPortal, Pump.fun, Litterbox, and the Solana RPC hosts `api.mainnet-beta.solana.com` and `api.devnet.solana.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
 - There are no third-party trackers.
 
 ## Run it locally
@@ -67,7 +67,7 @@ The Launch tab creates a Pump.fun bonding-curve token. Fill in the name, ticker,
 
 Pump.fun is mainnet only, so there is no devnet switch. Pump.fun sets the supply. An optional initial buy defaults to 0 SOL and is capped at 10 SOL.
 
-Image and metadata upload go through Pinata (`https://api.pinata.cloud`). Set `PINATA_JWT` in `js/config.js` to an upload-only JWT before a real launch. Leave it empty in git. A GitHub Pages site cannot hide a value in that file: anyone can read the page source, so use a key that can only upload and watch its quota.
+Image and metadata upload does not need an API key. The page tries `https://pump.fun/api/ipfs` first. Pump.fun's own docs now say that endpoint is discontinued, and Cloudflare does not let a third-party site read a metadata link from it. When that happens, the image and the metadata JSON are uploaded to Litterbox, which keeps them for up to 72 hours. Paste your own https metadata link on the form if the image must last longer. No secret is stored in this repo.
 
 The unsigned create transaction comes from `https://pumpportal.fun/api/trade-local`. Honeycharts never sends the mint secret to that API. The browser signs the new mint locally, then your wallet signs the fee payer. The Solana libraries are the vendored bundle in `vendor/solana-bundle.js` (`@solana/web3.js@1.98.4` and `@solana/spl-token@0.4.15`). See `vendor/VERSIONS.txt` for the pin.
 
@@ -84,7 +84,9 @@ Pump.fun pays ongoing creator rewards to the wallet that signs the launch, not t
 
 After launch, the page shows the mint, a Honeycharts chart link, Add to Hive, and a share-to-X draft.
 
-`tests/devnet-launch.test.mjs` asks PumpPortal for an unsigned create transaction, appends the 0.02 SOL transfer, and checks that instruction. It does not send the transaction and does not spend SOL. Do not commit a wallet secret or a Pinata JWT.
+`tests/devnet-launch.test.mjs` asks PumpPortal for an unsigned create transaction, appends the 0.02 SOL transfer, and checks that instruction. It does not send the transaction and does not spend SOL. Do not commit a wallet secret.
+
+The header brand and the footer line both come from `COPYRIGHT_OWNER` in `js/config.js` (currently `Honey Charts`). Change that one value to swap in the LLC legal name.
 
 ## Jupiter referral fee
 
