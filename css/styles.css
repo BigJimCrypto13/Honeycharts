@@ -432,6 +432,30 @@ details p { margin-top: 8px; color: var(--muted); }
   margin-top: 12px;
 }
 #swap-body .text-link { display: inline-block; margin-top: 8px; }
+.field { display: grid; gap: 6px; }
+.field span { color: var(--muted); }
+.field input, .field textarea {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 16px;
+}
+.cluster { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+.cluster legend { padding: 0; color: var(--muted); }
+.errors { margin: 0; padding-left: 18px; color: var(--down); }
+.review-list { margin: 0; padding-left: 18px; }
+.launch h3 { margin: 0; font-size: 1rem; }
+.launch .check {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+  max-width: 640px;
+}
+.launch .check-copy { display: grid; gap: 2px; }
 .fee-note {
   margin: 10px 0 0;
   padding: 8px 10px;

@@ -243,13 +243,16 @@ describe("jupiter swap link", () => {
 describe("page source", () => {
   it("keeps scripts, styles, and wallet access out of the static page", () => {
     const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-    const js = readdirSync(new URL("../js/", import.meta.url))
-      .filter((name) => name.endsWith(".js"))
+    const files = readdirSync(new URL("../js/", import.meta.url)).filter((name) => name.endsWith(".js"));
+    const js = files.map((name) => readFileSync(new URL(`../js/${name}`, import.meta.url), "utf8")).join("\n");
+    const withoutWallet = files
+      .filter((name) => name !== "wallet.js")
       .map((name) => readFileSync(new URL(`../js/${name}`, import.meta.url), "utf8"))
       .join("\n");
     assert.match(html, /script-src 'self' https:\/\/plugin\.jup\.ag/);
     assert.match(html, /https:\/\/api\.dexscreener\.com/);
     assert.match(html, /https:\/\/api\.rugcheck\.xyz/);
+    assert.match(html, /https:\/\/api\.devnet\.solana\.com/);
     assert.match(html, /frame-src https:\/\/dexscreener\.com/);
     assert.match(html, /style-src-elem[^;]*'unsafe-inline'/);
     assert.doesNotMatch(html, /script-src[^;]*unsafe-inline/);
@@ -257,7 +260,9 @@ describe("page source", () => {
     assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)/i);
     assert.doesNotMatch(html, /\son\w+=/i);
     assert.match(html, /Honeycharts will never ask for your seed phrase or private key\. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving\./);
-    assert.doesNotMatch(js, /innerHTML|insertAdjacentHTML|outerHTML|document\.write|eval\(|new Function|wallet-adapter|window\.solana|signTransaction|signMessage/);
+    assert.doesNotMatch(js, /innerHTML|insertAdjacentHTML|outerHTML|document\.write|eval\(|new Function|wallet-adapter|window\.solana|signMessage/);
+    assert.doesNotMatch(withoutWallet, /signTransaction/);
+    assert.doesNotMatch(js, /seed phrase|privateKey|secretKey\s*=/);
     assert.doesNotMatch(html + js, /style="/);
   });
 });

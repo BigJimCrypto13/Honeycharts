@@ -54,6 +54,15 @@ export function clipText(value, max) {
   return `${cleaned.slice(0, max - 1)}…`;
 }
 
+export function httpsOnlyUrl(value, max = 200) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > max || trimmed.length > 500) return null;
+  const safe = safeHttpUrl(trimmed);
+  if (!safe || !safe.startsWith("https://") || safe.length > max) return null;
+  return safe;
+}
+
 export function safeHttpUrl(value) {
   if (typeof value !== "string" || value.length === 0 || value.length > 500) return null;
   let url;

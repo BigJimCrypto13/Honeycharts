@@ -7,7 +7,7 @@ import { isValidCA } from "./sanitize.js";
 // Leave it as an empty string until that key exists. An empty or invalid
 // value means the swap runs with no Honeycharts fee.
 //
-// Do not put a private key, seed phrase, or secret-key file in this repo.
+// Do not put a wallet secret or key file in this repo.
 export const JUPITER_REFERRAL_ACCOUNT = "";
 
 // Integrator fee in basis points. 50 bps is 0.5%.
@@ -40,4 +40,20 @@ export function feeDisclosure() {
   const fee = referralFeeConfig();
   if (!fee) return "";
   return `Includes a ${formatFeePercent(fee.bps)} Honeycharts fee.`;
+}
+
+// Optional SOL transfer added to a token launch. Both must be set or the
+// launch has no fee. LAUNCH_FEE_WALLET is a public address. Never put a
+// wallet secret in this file.
+export const LAUNCH_FEE_SOL = 0;
+export const LAUNCH_FEE_WALLET = "";
+export const LAUNCH_FEE_SOL_MAX = 5;
+
+export function launchFeeConfig() {
+  const wallet = typeof LAUNCH_FEE_WALLET === "string" ? LAUNCH_FEE_WALLET.trim() : "";
+  if (!isValidCA(wallet)) return null;
+  const sol = typeof LAUNCH_FEE_SOL === "number" ? LAUNCH_FEE_SOL : Number(LAUNCH_FEE_SOL);
+  if (!Number.isFinite(sol) || sol <= 0) return null;
+  const capped = Math.min(sol, LAUNCH_FEE_SOL_MAX);
+  return { wallet, sol: capped };
 }

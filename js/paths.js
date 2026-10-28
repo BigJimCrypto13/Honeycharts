@@ -15,6 +15,10 @@ export function hivePath(pathname) {
   return `${appBase(pathname)}?view=hive`;
 }
 
+export function launchPath(pathname) {
+  return `${appBase(pathname)}?view=launch`;
+}
+
 export function tokenPath(pathname, ca) {
   return `${appBase(pathname)}?ca=${encodeURIComponent(ca)}`;
 }

@@ -12,6 +12,7 @@ This is a static site on GitHub Pages. The notes below are the work that shipped
 - Open Graph and Twitter card tags for the site. They describe Honeycharts, not each token. Per-token preview cards need a server.
 - Content Security Policy, address checks, text rendering that does not use raw HTML, and strict Hive import checks.
 - Jupiter swap on the token page, collapsed until you press Swap. It uses Jupiter's official plugin, prefilled SOL to the token on screen. A 0.5% referral fee (50 bps, clamped to Jupiter's 50–255 range) is sent only when `js/config.js` contains a public referral account. That field ships empty, so the fee is off until it is pasted. Honeycharts does not connect a wallet or sign anything.
+- Launch tab for a standard SPL token plus Metaplex metadata. Devnet by default, mainnet only after an extra confirmation. Mint and freeze authority start revoked. Metadata JSON is downloaded for the creator to host. Wallet connection is limited to the Launch tab and starts only from Connect wallet to launch. No liquidity pool is created. `LAUNCH_FEE_SOL` is 0 until a public fee address is set.
 
 ## Limits of this version
 
@@ -30,6 +31,9 @@ These are not scheduled. Each one needs the dependency named here.
 
 - **Price alerts.** Useful, and a reasonable paid feature later. A static page cannot notify anyone after the tab closes. This needs a small backend, a way to pay, and a clear limit on how alerts are delivered. Do not fake it with a browser-only timer.
 - **Turn the referral fee on.** The code is in place. Paste the Referral Key from [referral.jup.ag](https://referral.jup.ag/) into `JUPITER_REFERRAL_ACCOUNT`, and create referral token accounts for SOL and USDC or Jupiter will skip the fee. No private key belongs in the repo.
+- **Launch fee revenue.** Set `LAUNCH_FEE_SOL` and `LAUNCH_FEE_WALLET` when you want a disclosed SOL transfer in the launch transaction. Keep the amount small and the address public.
+- **Bonding-curve launchpad and LP creation.** Not in this version. A curve or an automatic Raydium/Meteora pool is a larger product, with more legal review, and it should stay a separate step from minting.
+- **Legal review for launch fees and any token the site itself would issue.** The launcher creates the visitor's token, not a Honeycharts token. A fee on that flow, and any Honeycharts token, still deserve a lawyer before they are marketed.
 - **Sponsored spots.** Only as slots that are visibly marked sponsored, separate from DexScreener's own boost labels. Pricing and disclosure need a lawyer. Do not mix paid rows into the Honey Score.
 - **Read-only public-address view.** A later option, not part of the scanner. If it is built, it may look up a public address the visitor types or pastes. It must not connect a wallet, request a signature, or ask for a seed phrase.
 - **PWA.** A manifest and service worker so the shell opens offline. The Hive is already local. Live prices still need the network. Worth doing after the current pages stay stable.
