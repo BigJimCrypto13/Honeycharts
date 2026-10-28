@@ -1,68 +1,64 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { launchFeeConfig, LAUNCH_FEE_SOL, LAUNCH_FEE_WALLET } from "../js/config.js";
-import { describeLaunch, metadataDocument, validateLaunch } from "../js/launch-form.js";
+import { describeLaunch, pumpMetadata, validateLaunch } from "../js/launch-form.js";
 import { formatLamports, solToLamports } from "../js/launch-tx.js";
-
-const META = "https://example.com/honeycharts/metadata.json";
 
 function fields(extra = {}) {
   return {
     name: "Honey Test",
     symbol: "htest",
-    decimals: "6",
-    supply: "1000",
-    imageUrl: "",
-    description: "A devnet test token",
+    description: "A mainnet bonding-curve token",
     website: "",
     twitter: "",
     telegram: "",
-    metadataUri: META,
+    initialBuy: "0",
     ...extra,
   };
 }
 
+const image = { type: "image/png", size: 128, name: "honey.png" };
+
 describe("launch form", () => {
-  it("accepts a strict token form and builds metadata json", () => {
+  it("accepts a bonding-curve form and builds pump metadata", () => {
     const parsed = validateLaunch(fields({
       website: "https://honeycharts.example/",
       twitter: "https://x.com/honeycharts",
-    }));
+      initialBuy: "0.1",
+    }), image);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.value.symbol, "HTEST");
-    assert.equal(parsed.value.decimals, 6);
-    const doc = metadataDocument(parsed.value);
+    assert.equal(parsed.value.initialBuySol, 0.1);
+    const doc = pumpMetadata(parsed.value, "https://gateway.pinata.cloud/ipfs/abc");
     assert.equal(doc.name, "Honey Test");
-    assert.equal(doc.external_url, "https://honeycharts.example/");
-    assert.equal(doc.extensions.twitter, "https://x.com/honeycharts");
-    assert.equal(doc.image, undefined);
+    assert.equal(doc.website, "https://honeycharts.example/");
+    assert.equal(doc.twitter, "https://x.com/honeycharts");
+    assert.equal(doc.image, "https://gateway.pinata.cloud/ipfs/abc");
   });
 
-  it("rejects control characters, bad links, and an oversized supply", () => {
+  it("rejects control characters, a bad link, and a missing image", () => {
     const parsed = validateLaunch(fields({
       name: "Bad\nName",
-      metadataUri: "http://example.com/meta.json",
-      supply: "999999999999999999",
-      decimals: "9",
-    }));
+      website: "http://example.com",
+      initialBuy: "11",
+    }), null);
     assert.equal(parsed.ok, false);
     assert.ok(parsed.errors.some((error) => error.includes("Name")));
-    assert.ok(parsed.errors.some((error) => error.includes("Metadata")));
+    assert.ok(parsed.errors.some((error) => error.includes("Website")));
+    assert.ok(parsed.errors.some((error) => error.includes("Image")));
+    assert.ok(parsed.errors.some((error) => error.includes("Initial buy")));
   });
 
-  it("describes revoke defaults and leaves the launch fee off", () => {
-    assert.equal(LAUNCH_FEE_SOL, 0);
-    assert.equal(LAUNCH_FEE_WALLET, "");
-    assert.equal(launchFeeConfig(), null);
-    const lines = describeLaunch(validateLaunch(fields()).value, {
-      revokeMint: true,
-      revokeFreeze: true,
-      fee: null,
-    });
-    assert.ok(lines.some((line) => line.includes("Revoke mint authority")));
-    assert.ok(lines.some((line) => line.includes("Revoke freeze authority")));
-    assert.ok(lines.some((line) => line.includes("liquidity pool")));
-    assert.equal(solToLamports("0.5"), 500000000n);
-    assert.equal(formatLamports(1500000000n), "1.5");
+  it("discloses the 0.02 SOL launch fee", () => {
+    assert.equal(LAUNCH_FEE_SOL, 0.02);
+    assert.equal(LAUNCH_FEE_WALLET, "7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6");
+    const fee = launchFeeConfig();
+    assert.equal(fee.sol, 0.02);
+    assert.equal(fee.wallet, LAUNCH_FEE_WALLET);
+    const lines = describeLaunch(validateLaunch(fields(), image).value, fee);
+    assert.ok(lines.some((line) => line === "Includes 0.02 SOL Honeycharts launch fee"));
+    assert.ok(lines.some((line) => line.includes("bonding-curve")));
+    assert.equal(solToLamports(0.02), 20000000n);
+    assert.equal(formatLamports(20000000n), "0.02");
   });
 });

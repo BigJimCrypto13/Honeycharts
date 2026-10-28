@@ -12,16 +12,16 @@ import {
 } from "./store.js";
 import { buildHoneyScore } from "./score.js";
 import { mountSwap } from "./swap.js";
-import { launchFeeConfig } from "./config.js";
+import { pinataConfigured } from "./config.js";
 import { validateLaunch } from "./launch-form.js";
-import { renderLaunch, downloadMetadata, downloadImage } from "./launch-ui.js";
+import { renderLaunch } from "./launch-ui.js";
 import {
   clusterUrl,
   confirmSignature,
-  estimateLaunchLamports,
   forgetMint,
   loadSolana,
   prepareLaunch,
+  uploadLaunchMetadata,
 } from "./launch-tx.js";
 import { connectLaunchWallet, listLaunchWallets } from "./wallet.js";
 import { el, clear } from "./dom.js";
@@ -54,29 +54,24 @@ let hiveSort = { key: "added", dir: "desc" };
 let lastForce = 0;
 let lastHome = null;
 const launchState = {
-  cluster: "devnet",
+  cluster: "mainnet",
   step: "form",
   fields: {
     name: "",
     symbol: "",
-    decimals: "6",
-    supply: "",
-    imageUrl: "",
     description: "",
     website: "",
     twitter: "",
     telegram: "",
-    metadataUri: "",
+    initialBuy: "0",
   },
   imageFile: null,
   errors: [],
-  revokeMint: true,
-  revokeFreeze: true,
   mainnetConfirmed: false,
-  estimate: null,
   wallets: [],
   wallet: null,
   result: null,
+  savedHive: false,
   message: "",
   busy: false,
   form: null,
@@ -96,17 +91,15 @@ const actions = {
   exportHive,
   importHive,
   clearRecent,
-  setLaunchCluster,
   patchLaunch,
   setLaunchImage,
-  downloadLaunchMetadata,
-  downloadLaunchImage,
   reviewLaunch,
   editLaunch,
   patchLaunchFlag,
   refreshLaunchWallets,
   connectLaunch,
   signLaunch,
+  addLaunchToHive,
 };
 
 boot();
@@ -445,27 +438,15 @@ function renderLaunchView() {
   renderLaunch(view, launchState, actions);
 }
 
-function setLaunchCluster(cluster) {
-  if (cluster !== "devnet" && cluster !== "mainnet") return;
-  launchState.cluster = cluster;
-  if (cluster !== "mainnet") launchState.mainnetConfirmed = false;
-  launchState.estimate = null;
-  renderLaunchView();
-  if (launchState.step === "review") refreshLaunchEstimate();
-}
-
 function patchLaunch(id, value) {
   const key = {
     "launch-name": "name",
     "launch-symbol": "symbol",
-    "launch-decimals": "decimals",
-    "launch-supply": "supply",
-    "launch-image-url": "imageUrl",
     "launch-description": "description",
     "launch-website": "website",
     "launch-twitter": "twitter",
     "launch-telegram": "telegram",
-    "launch-metadata": "metadataUri",
+    "launch-initial-buy": "initialBuy",
   }[id];
   if (!key) return;
   launchState.fields[key] = value;
@@ -473,22 +454,6 @@ function patchLaunch(id, value) {
 
 function setLaunchImage(file) {
   launchState.imageFile = file || null;
-  if (launchState.step === "form") renderLaunchView();
-}
-
-function downloadLaunchMetadata() {
-  const parsed = validateLaunch(launchState.fields, launchState.imageFile, { requireMetadata: false });
-  if (!parsed.ok) {
-    launchState.errors = parsed.errors;
-    renderLaunchView();
-    return;
-  }
-  launchState.errors = [];
-  downloadMetadata(parsed.value);
-}
-
-function downloadLaunchImage() {
-  downloadImage(launchState.imageFile);
 }
 
 function reviewLaunch() {
@@ -503,12 +468,10 @@ function reviewLaunch() {
   launchState.errors = [];
   launchState.form = parsed.value;
   launchState.step = "review";
-  launchState.estimate = null;
   launchState.wallet = null;
   launchState.message = "";
   launchState.wallets = listLaunchWallets();
   renderLaunchView();
-  refreshLaunchEstimate();
 }
 
 function editLaunch() {
@@ -519,7 +482,7 @@ function editLaunch() {
 }
 
 function patchLaunchFlag(key) {
-  if (key !== "revokeMint" && key !== "revokeFreeze" && key !== "mainnetConfirmed") return;
+  if (key !== "mainnetConfirmed") return;
   launchState[key] = !launchState[key];
   renderLaunchView();
 }
@@ -527,25 +490,6 @@ function patchLaunchFlag(key) {
 function refreshLaunchWallets() {
   launchState.wallets = listLaunchWallets();
   renderLaunchView();
-}
-
-async function refreshLaunchEstimate() {
-  const gen = generation;
-  const cluster = launchState.cluster;
-  try {
-    const solana = await loadSolana();
-    if (!alive(gen) || currentRoute().name !== "launch") return;
-    const connection = new solana.Connection(clusterUrl(cluster), "confirmed");
-    const estimate = await estimateLaunchLamports(connection, launchFeeConfig());
-    if (!alive(gen) || currentRoute().name !== "launch" || launchState.cluster !== cluster) return;
-    launchState.estimate = estimate;
-    launchState.message = "";
-  } catch (error) {
-    if (error && error.name === "AbortError") return;
-    if (!alive(gen) || currentRoute().name !== "launch") return;
-    launchState.message = "Couldn't reach the Solana RPC to estimate rent. The actions below are still what will be signed.";
-  }
-  if (currentRoute().name === "launch") renderLaunchView();
 }
 
 async function connectLaunch(choice) {
@@ -571,20 +515,25 @@ async function connectLaunch(choice) {
 
 async function signLaunch() {
   if (launchState.busy || !launchState.wallet || !launchState.form) return;
-  if (launchState.cluster === "mainnet" && !launchState.mainnetConfirmed) return;
+  if (!launchState.mainnetConfirmed) return;
+  if (!pinataConfigured()) {
+    launchState.message = "Set PINATA_JWT in js/config.js to a Pinata upload key. The wallet was not asked to sign.";
+    renderLaunchView();
+    return;
+  }
   launchState.busy = true;
   launchState.message = "";
   renderLaunchView();
   let mint = null;
   try {
+    const metadataUri = await uploadLaunchMetadata(launchState.form);
     const solana = await loadSolana();
-    const connection = new solana.Connection(clusterUrl(launchState.cluster), "confirmed");
+    const connection = new solana.Connection(clusterUrl(), "confirmed");
     const prepared = await prepareLaunch({
       connection,
       payer: launchState.wallet.address,
       form: launchState.form,
-      revokeMint: launchState.revokeMint,
-      revokeFreeze: launchState.revokeFreeze,
+      metadataUri,
     });
     mint = prepared.mint;
     const raw = await launchState.wallet.sign(prepared.transaction);
@@ -592,12 +541,13 @@ async function signLaunch() {
       skipPreflight: false,
       preflightCommitment: "confirmed",
     });
-    await confirmSignature(connection, signature, prepared.lastValidBlockHeight);
+    const latest = await connection.getLatestBlockhash("confirmed");
+    await confirmSignature(connection, signature, latest.lastValidBlockHeight);
     launchState.result = {
       mint: prepared.mint.publicKey.toBase58(),
       signature,
-      cluster: launchState.cluster,
     };
+    launchState.savedHive = false;
     launchState.step = "done";
     launchState.message = "";
   } catch (error) {
@@ -609,11 +559,22 @@ async function signLaunch() {
   }
 }
 
+function addLaunchToHive() {
+  const result = launchState.result;
+  const form = launchState.form;
+  if (!result || !form || !isValidCA(result.mint)) return;
+  hive.add(result.mint, form.name, form.symbol);
+  launchState.savedHive = true;
+  launchState.message = "Saved in this browser's Hive.";
+  syncChrome(currentRoute());
+  renderLaunchView();
+}
+
 function launchErrorMessage(error) {
   const text = error && typeof error.message === "string" ? error.message.replace(/[\u0000-\u001F\u007F]/g, "").trim() : "";
   if (/reject|cancel|denied/i.test(text)) return "The wallet closed the request. Nothing was created.";
   if (text && text.length <= 180) return text;
-  return "The launch did not finish. Match the wallet network to Devnet or Mainnet, then try again.";
+  return "The launch did not finish. Use a mainnet wallet, then try again.";
 }
 
 function toggleHive() {

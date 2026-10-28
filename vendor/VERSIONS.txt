@@ -5,7 +5,7 @@ Regenerate only by rebundling these exact package versions.
 @solana/spl-token@0.4.15
 
 sha256 solana-bundle.js
-5b814f5681391fc747a9c5f332789f4ad3203f078c75c5634fb73475a8e042d6
+161f6a379dce13027b885d9b1d34169bc6ff040c4cd8a85acb96d15fd9b2b094
 
 The bundle is served from this site (script-src 'self'), so a third-party CDN and an SRI
 script tag are not used. The hash above is the pin.

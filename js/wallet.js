@@ -85,7 +85,7 @@ async function connectInjected(choice) {
       if (!signed || typeof signed.serialize !== "function") {
         throw new Error("The wallet did not return a signed transaction.");
       }
-      return signed.serialize();
+      return signedBytes(signed);
     },
   };
 }
@@ -101,7 +101,7 @@ async function connectStandard(choice, cluster) {
     name: choice.name,
     address: account.address,
     async sign(transaction) {
-      const bytes = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+      const bytes = unsignedBytes(transaction);
       const feature = choice.wallet.features["solana:signTransaction"];
       if (!feature) throw new Error("This wallet cannot sign a transaction for Honeycharts to send.");
       const outputs = await feature.signTransaction({ account, transaction: bytes, chain });
@@ -110,4 +110,13 @@ async function connectStandard(choice, cluster) {
       return signed;
     },
   };
+}
+
+function unsignedBytes(transaction) {
+  if (transaction && typeof transaction.version === "number") return transaction.serialize();
+  return transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+}
+
+function signedBytes(transaction) {
+  return transaction.serialize();
 }

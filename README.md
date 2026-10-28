@@ -14,21 +14,21 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 - Browse Solana tokens from DexScreener's boosted list and latest profiles. Boosted rows are labeled as paid promotion.
 - Share a token with `?ca=` (older `#ca` links still open). Copy the address, copy the link, or open an X post draft.
 - Open a Jupiter swap for the token you are viewing. It stays collapsed until you press Swap. The form is Jupiter's official plugin, prefilled from SOL into that token, with a 0.5% Honeycharts fee (`referralAccount` and `referralFee` of 50 bps).
-- Launch a standard SPL token from the Launch tab. It defaults to Devnet. Mainnet asks for an extra confirmation. Mint and freeze authority are revoked unless you uncheck them. No liquidity pool is created.
+- Launch a Pump.fun bonding-curve token from the Launch tab. It is mainnet only, tradable immediately, and asks for one signature after a confirmation checkbox. The review screen says `Includes 0.02 SOL Honeycharts launch fee`.
 
 ## Security promise
 
 Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving.
 
-- Honeycharts never connects a wallet, reads a public key, or asks you to sign. The Swap button only loads Jupiter's plugin. Connecting and approving stay inside that plugin and your wallet extension.
-- The referral fee uses the public referral account in `js/config.js`. The launch fee wallet is still empty. Do not commit a private key, seed phrase, or secret-key file.
+- The scanner and the Hive never connect a wallet. The Swap button only loads Jupiter's plugin. Connecting and approving stay inside that plugin and your wallet extension.
+- The referral fee uses the public referral account in `js/config.js`. The launch fee uses the public address `7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6`. Do not commit a private key, seed phrase, or secret-key file. `PINATA_JWT` stays empty in git.
 - The Launch tab talks to Phantom or Solflare only after you click Connect wallet to launch. Signing happens in that wallet. Honeycharts does not see wallet secrets. A one-time mint account signature is generated in the browser for that transaction and then discarded.
 - The Hive is local. Nothing in the watchlist is uploaded by this site.
 - Contract addresses must be base58 and 32–44 characters.
 - Text from DexScreener and RugCheck is written as text, not HTML.
 - External links must be `http` or `https`, and they open with `rel="noopener noreferrer"`.
 - Imported Hive files are rejected unless they match the version 1 backup shape.
-- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, and the Solana RPC hosts `api.mainnet-beta.solana.com` and `api.devnet.solana.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
+- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, PumpPortal, Pinata's upload API, and the Solana RPC hosts `api.mainnet-beta.solana.com` and `api.devnet.solana.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
 - There are no third-party trackers.
 
 ## Run it locally
@@ -63,22 +63,28 @@ The swap form is Jupiter's. Honeycharts does not build, sign, or send the transa
 
 ## Launch a token
 
-The Launch tab creates a standard SPL token (the original Token Program, not Token-2022) and a Metaplex metadata account. The libraries are the vendored bundle in `vendor/solana-bundle.js` (`@solana/web3.js@1.98.4` and `@solana/spl-token@0.4.15`). See `vendor/VERSIONS.txt` for the pin.
+The Launch tab creates a Pump.fun bonding-curve token. Fill in the name, ticker, image, and description, confirm the mainnet spend, then sign once in Phantom or Solflare. The token is tradable on the bonding curve immediately. You do not create a liquidity pool or host the metadata yourself.
 
-This site cannot host images or JSON. Download `metadata.json` (and the image file, if you chose one), put them on any host you control, then paste the https link to `metadata.json`. That link has to be 200 characters or fewer because that is what the metadata program stores. No API key is required.
+Pump.fun is mainnet only, so there is no devnet switch. Pump.fun sets the supply. An optional initial buy defaults to 0 SOL and is capped at 10 SOL.
 
-The form defaults to Devnet (test). Mainnet spends real SOL and requires the extra confirmation checkbox. Revoke mint authority and revoke freeze authority start checked. Leaving them checked means the creator cannot mint more tokens or freeze holders, which is what the Honey Score looks for. Uncheck them only if you mean to keep those powers.
+Image and metadata upload go through Pinata (`https://api.pinata.cloud`). Set `PINATA_JWT` in `js/config.js` to an upload-only JWT before a real launch. Leave it empty in git. A GitHub Pages site cannot hide a value in that file: anyone can read the page source, so use a key that can only upload and watch its quota.
 
-No pool is created. After launch, the page links to the Honeycharts chart and to Raydium and Meteora for liquidity.
+The unsigned create transaction comes from `https://pumpportal.fun/api/trade-local`. Honeycharts never sends the mint secret to that API. The browser signs the new mint locally, then your wallet signs the fee payer. The Solana libraries are the vendored bundle in `vendor/solana-bundle.js` (`@solana/web3.js@1.98.4` and `@solana/spl-token@0.4.15`). See `vendor/VERSIONS.txt` for the pin.
 
-`LAUNCH_FEE_SOL` defaults to `0` and `LAUNCH_FEE_WALLET` is empty, so no fee is added. To charge one, set both in `js/config.js`. The wallet value must be a public address. The amount is capped at 5 SOL. The review screen lists the transfer before anyone signs.
+`js/config.js` sets:
 
 ```js
-export const LAUNCH_FEE_SOL = 0.05;
-export const LAUNCH_FEE_WALLET = "YourPublicFeeAddress";
+export const LAUNCH_FEE_SOL = 0.02;
+export const LAUNCH_FEE_WALLET = "7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6";
 ```
 
-A harness in `tests/devnet-launch.test.mjs` creates a token with a keypair that exists only in that process. The public devnet faucet currently returns HTTP 410, so that test skips unless `SOLANA_RPC` points at a validator that can fund the wallet. It was run against a local validator with the devnet Metaplex metadata program cloned in. Do not commit a wallet secret.
+That wallet is a public LLC address. The launch transaction includes a SOL transfer of 0.02 SOL to it. The confirmation screen says `Includes 0.02 SOL Honeycharts launch fee`. The amount is capped at 5 SOL in code.
+
+Pump.fun pays ongoing creator rewards to the wallet that signs the launch, not to a platform fee address. Its create API has no partner account field, so this wallet is not a Pump.fun fee recipient. A share of trading fees would need a separate config account, such as a Meteora Dynamic Bonding Curve config whose `feeClaimer` is this same wallet. This launch does not create that account.
+
+After launch, the page shows the mint, a Honeycharts chart link, Add to Hive, and a share-to-X draft.
+
+`tests/devnet-launch.test.mjs` asks PumpPortal for an unsigned create transaction, appends the 0.02 SOL transfer, and checks that instruction. It does not send the transaction and does not spend SOL. Do not commit a wallet secret or a Pinata JWT.
 
 ## Jupiter referral fee
 

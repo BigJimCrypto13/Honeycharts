@@ -42,11 +42,16 @@ export function feeDisclosure() {
   return `Includes a ${formatFeePercent(fee.bps)} Honeycharts fee.`;
 }
 
-// Optional SOL transfer added to a token launch. Both must be set or the
-// launch has no fee. LAUNCH_FEE_WALLET is a public address. Never put a
-// wallet secret in this file.
-export const LAUNCH_FEE_SOL = 0;
-export const LAUNCH_FEE_WALLET = "";
+// SOL transfer added to the Pump.fun launch transaction. This wallet is a
+// public LLC address. Never put a wallet secret in this file.
+// Pump.fun pays ongoing creator rewards to the launching wallet, not to a
+// platform account. This transfer is Honeycharts' launch revenue.
+export const LAUNCH_FEE_SOL = 0.02;
+export const LAUNCH_FEE_WALLET = "7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6";
+
+// Pinata upload JWT for the token image and metadata JSON. Leave empty in git.
+// A static site cannot hide this value once you paste it: use an upload-only key.
+export const PINATA_JWT = "";
 export const LAUNCH_FEE_SOL_MAX = 5;
 
 export function launchFeeConfig() {
@@ -56,4 +61,8 @@ export function launchFeeConfig() {
   if (!Number.isFinite(sol) || sol <= 0) return null;
   const capped = Math.min(sol, LAUNCH_FEE_SOL_MAX);
   return { wallet, sol: capped };
+}
+
+export function pinataConfigured() {
+  return typeof PINATA_JWT === "string" && PINATA_JWT.trim().length >= 20;
 }
