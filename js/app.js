@@ -12,7 +12,7 @@ import {
 } from "./store.js";
 import { buildHoneyScore } from "./score.js";
 import { mountSwap } from "./swap.js";
-import { brandLabel, copyrightNotice } from "./config.js";
+import { LAUNCH_ENABLED, brandLabel, copyrightNotice } from "./config.js";
 import { validateLaunch } from "./launch-form.js";
 import { renderLaunch } from "./launch-ui.js";
 import {
@@ -107,6 +107,7 @@ boot();
 
 function boot() {
   applyBrand();
+  applyLaunchNav();
   normalizeHash();
   searchForm.addEventListener("submit", onSearch);
   window.addEventListener("popstate", render);
@@ -130,6 +131,12 @@ function applyBrand() {
   if (brand) brand.textContent = brandLabel();
   const line = document.querySelector("[data-copyright]");
   if (line) line.textContent = copyrightNotice();
+}
+
+function applyLaunchNav() {
+  if (LAUNCH_ENABLED) return;
+  const link = document.querySelector("[data-nav='launch']");
+  if (link) link.remove();
 }
 
 function begin() {
@@ -440,6 +447,14 @@ async function toggleSwap() {
 }
 
 function showLaunch() {
+  if (!LAUNCH_ENABLED) {
+    launchState.wallet = null;
+    clear(view);
+    view.append(el("section", { className: "hero" }, [
+      el("h1", { text: "Token launches are coming soon" }),
+    ]));
+    return;
+  }
   renderLaunchView();
 }
 

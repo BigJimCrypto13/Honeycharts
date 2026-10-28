@@ -46,6 +46,10 @@ export function feeDisclosure() {
 // public LLC address. Never put a wallet secret in this file.
 // Pump.fun pays ongoing creator rewards to the launching wallet, not to a
 // platform account. This transfer is Honeycharts' launch revenue.
+// Flip to true to show the Launch tab again. It stays off while automatic
+// metadata hosting expires after 72 hours. The launch code remains in the repo.
+export const LAUNCH_ENABLED = false;
+
 export const LAUNCH_FEE_SOL = 0.02;
 export const LAUNCH_FEE_WALLET = "7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6";
 

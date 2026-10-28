@@ -63,6 +63,8 @@ The swap form is Jupiter's. Honeycharts does not build, sign, or send the transa
 
 ## Launch a token
 
+`LAUNCH_ENABLED` is `false`, so the Launch nav item is hidden and `?view=launch` only says "Token launches are coming soon." The form and wallet code stay in the repo. Set the flag to `true` to show them again.
+
 The Launch tab creates a Pump.fun bonding-curve token. Fill in the name, ticker, image, and description, confirm the mainnet spend, then sign once in Phantom or Solflare. The token is tradable on the bonding curve immediately. You do not create a liquidity pool or host the metadata yourself.
 
 Pump.fun is mainnet only, so there is no devnet switch. Pump.fun sets the supply. An optional initial buy defaults to 0 SOL and is capped at 10 SOL.
