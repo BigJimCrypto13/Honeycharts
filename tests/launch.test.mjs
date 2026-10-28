@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { LAUNCH_ENABLED, brandLabel, copyrightNotice, launchFeeConfig, LAUNCH_FEE_SOL, LAUNCH_FEE_WALLET } from "../js/config.js";
 import { describeLaunch, pumpMetadata, validateLaunch } from "../js/launch-form.js";
-import { formatLamports, hostedFileUrl, solToLamports } from "../js/launch-tx.js";
+import { formatLamports, solToLamports } from "../js/launch-tx.js";
+import { gatewayUri } from "../js/irys-upload.js";
 
 function fields(extra = {}) {
   return {
@@ -70,9 +71,9 @@ describe("launch form", () => {
     assert.equal(parsed.value.metadataUri, "https://example.com/honeycharts/metadata.json");
     assert.equal(parsed.value.image, null);
     assert.equal(validateLaunch(fields({ metadataUri: "http://example.com/m.json" }), null).ok, false);
-    assert.equal(hostedFileUrl("https://litter.catbox.moe/abc123.json"), "https://litter.catbox.moe/abc123.json");
-    assert.equal(hostedFileUrl("https://evil.example/abc123.json"), "");
-    assert.equal(LAUNCH_ENABLED, false);
+    assert.equal(gatewayUri("a".repeat(43)), `https://gateway.irys.xyz/${"a".repeat(43)}`);
+    assert.equal(gatewayUri("not a uri"), "");
+    assert.equal(LAUNCH_ENABLED, true);
     assert.equal(brandLabel(), "Honey Charts™");
     assert.equal(copyrightNotice(), "© 2026 Honey Charts™. All rights reserved.");
   });

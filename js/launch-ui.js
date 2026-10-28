@@ -1,7 +1,7 @@
 import { el } from "./dom.js";
 import { launchFeeConfig } from "./config.js";
 import { describeLaunch, imageDownloadName } from "./launch-form.js";
-import { PUMP_PRIORITY_FEE_SOL } from "./launch-tx.js";
+import { PUMP_PRIORITY_FEE_SOL, formatLamports } from "./launch-tx.js";
 import { tokenPath } from "./paths.js";
 import { safeHttpUrl } from "./sanitize.js";
 
@@ -60,7 +60,7 @@ function formPanel(state, actions) {
   form.append(textField("Metadata link (optional)", "launch-metadata", state.fields.metadataUri, { type: "url", placeholder: "https://…" }, actions));
   form.append(el("p", {
     className: "fine",
-    text: "Leave this empty and the image is uploaded for you. No API key. Pump.fun's uploader is tried first. If it is blocked, the file is stored for up to 72 hours. Paste your own https metadata link if the image must last longer.",
+    text: "Leave this empty and your wallet pays a fraction of a cent to store the image and metadata on Arweave. Paste an https link only if you already host the metadata JSON.",
   }));
   form.append(textField("Website", "launch-website", state.fields.website, { type: "url", placeholder: "https://…" }, actions));
   form.append(textField("X", "launch-twitter", state.fields.twitter, { type: "url", placeholder: "https://x.com/…" }, actions));
@@ -127,7 +127,7 @@ function reviewPanel(state, actions) {
   const list = el("ul", { className: "review-list" });
   for (const line of describeLaunch(form, fee)) list.append(el("li", { text: line }));
   panel.append(list);
-  panel.append(costBlock(form, fee));
+  panel.append(costBlock(form, fee, state.storageLamports));
   panel.append(check(
     "I understand this creates a live mainnet token and spends real SOL",
     "launch-mainnet-ok",
@@ -139,7 +139,7 @@ function reviewPanel(state, actions) {
     panel.append(el("p", { text: `Connected with ${state.wallet.name}: ${state.wallet.address}` }));
     const sign = el("button", {
       className: "primary",
-      text: state.busy ? "Waiting for your wallet…" : "Sign and launch",
+      text: state.busy ? "Waiting for your wallet…" : (form.metadataUri ? "Sign and launch" : "Pay storage, then launch"),
       attrs: { type: "button" },
       on: { click: () => actions.signLaunch() },
     });
@@ -203,19 +203,29 @@ function check(label, id, checked, help, onChange) {
   return wrap;
 }
 
-function costBlock(form, fee) {
+function costBlock(form, fee, storageLamports) {
   const block = el("div", { className: "stack" });
-  block.append(el("h3", { text: "SOL in this transaction" }));
+  block.append(el("h3", { text: "SOL in this launch" }));
   const list = el("ul", { className: "review-list" });
+  if (form.metadataUri) {
+    list.append(el("li", { text: "Using your metadata link. No Arweave storage charge." }));
+  } else {
+    list.append(el("li", { text: storageDisclosure(storageLamports) }));
+  }
   list.append(el("li", { text: `Initial buy: ${form.initialBuySol} SOL` }));
   if (fee) list.append(el("li", { text: `Includes ${fee.sol} SOL Honeycharts launch fee` }));
   list.append(el("li", { text: `Network priority fee: ${PUMP_PRIORITY_FEE_SOL} SOL` }));
   block.append(list);
   block.append(el("p", {
     className: "fine",
-    text: "Pump.fun's account creation cost is inside the same transaction. Your wallet shows the full total before you approve.",
+    text: "Storage is a separate wallet approval before the launch transaction. It only pays Irys. Pump.fun's account creation cost is inside the launch transaction. Your wallet shows each total before you approve.",
   }));
   return block;
+}
+
+function storageDisclosure(lamports) {
+  if (lamports == null) return "Permanent image storage (Arweave): price unavailable";
+  return `Permanent image storage (Arweave): ~${formatLamports(lamports)} SOL`;
 }
 
 function donePanel(state, actions) {

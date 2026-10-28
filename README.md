@@ -14,7 +14,7 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 - Browse Solana tokens from DexScreener's boosted list and latest profiles. Boosted rows are labeled as paid promotion.
 - Share a token with `?ca=` (older `#ca` links still open). Copy the address, copy the link, or open an X post draft.
 - Open a Jupiter swap for the token you are viewing. It stays collapsed until you press Swap. The form is Jupiter's official plugin, prefilled from SOL into that token, with a 0.5% Honeycharts fee (`referralAccount` and `referralFee` of 50 bps).
-- Launch a Pump.fun bonding-curve token from the Launch tab. It is mainnet only, tradable immediately, and asks for one signature after a confirmation checkbox. The review screen says `Includes 0.02 SOL Honeycharts launch fee`.
+- Launch a Pump.fun bonding-curve token from the Launch tab. It is mainnet only. Your wallet first pays Irys for permanent Arweave storage, then signs the launch. The review screen shows `Permanent image storage (Arweave): ~X SOL` and `Includes 0.02 SOL Honeycharts launch fee`.
 
 ## Security promise
 
@@ -28,7 +28,7 @@ Honeycharts will never ask for your seed phrase or private key. Swaps are handle
 - Text from DexScreener and RugCheck is written as text, not HTML.
 - External links must be `http` or `https`, and they open with `rel="noopener noreferrer"`.
 - Imported Hive files are rejected unless they match the version 1 backup shape.
-- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, PumpPortal, Pump.fun, Litterbox, and the Solana RPC hosts `api.mainnet-beta.solana.com` and `api.devnet.solana.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
+- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, PumpPortal, Irys (`uploader.irys.xyz`, `gateway.irys.xyz`, `devnet.irys.xyz`), and the Solana RPC hosts `api.mainnet-beta.solana.com` and `api.devnet.solana.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
 - There are no third-party trackers.
 
 ## Run it locally
@@ -63,13 +63,15 @@ The swap form is Jupiter's. Honeycharts does not build, sign, or send the transa
 
 ## Launch a token
 
-`LAUNCH_ENABLED` is `false`, so the Launch nav item is hidden and `?view=launch` only says "Token launches are coming soon." The form and wallet code stay in the repo. Set the flag to `true` to show them again.
+`LAUNCH_ENABLED` is `true` on this branch. The creator's wallet pays Irys, which stores the image and metadata on Arweave. The review screen shows `Permanent image storage (Arweave): ~X SOL`. That payment is signed before the launch transaction. No API key is required.
 
 The Launch tab creates a Pump.fun bonding-curve token. Fill in the name, ticker, image, and description, confirm the mainnet spend, then sign once in Phantom or Solflare. The token is tradable on the bonding curve immediately. You do not create a liquidity pool or host the metadata yourself.
 
 Pump.fun is mainnet only, so there is no devnet switch. Pump.fun sets the supply. An optional initial buy defaults to 0 SOL and is capped at 10 SOL.
 
-Image and metadata upload does not need an API key. The page tries `https://pump.fun/api/ipfs` first. Pump.fun's own docs now say that endpoint is discontinued, and Cloudflare does not let a third-party site read a metadata link from it. When that happens, the image and the metadata JSON are uploaded to Litterbox, which keeps them for up to 72 hours. Paste your own https metadata link on the form if the image must last longer. No secret is stored in this repo.
+Image and metadata upload does not need an API key or an owner account. The browser loads the vendored Irys web SDK (`vendor/irys-bundle.js`, `@irys/web-upload@0.0.15` and `@irys/web-upload-solana@0.1.8`). Your wallet pays the Irys bundler at `https://uploader.irys.xyz` in SOL, then the page uploads the image and a metadata JSON file. The token URI is `https://gateway.irys.xyz/<id>`. That payment is a normal wallet approval. Honeycharts never sees a secret key. Paste an https metadata link instead if you already host one.
+
+Irys devnet (`https://devnet.irys.xyz`) did not accept a price request from this environment, so the checked path is the mainnet price quote. No SOL was spent and no file was uploaded. Devnet data is also not permanent. A real launch uses mainnet.
 
 The unsigned create transaction comes from `https://pumpportal.fun/api/trade-local`. Honeycharts never sends the mint secret to that API. The browser signs the new mint locally, then your wallet signs the fee payer. The Solana libraries are the vendored bundle in `vendor/solana-bundle.js` (`@solana/web3.js@1.98.4` and `@solana/spl-token@0.4.15`). See `vendor/VERSIONS.txt` for the pin.
 

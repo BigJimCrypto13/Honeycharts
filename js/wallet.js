@@ -80,6 +80,7 @@ async function connectInjected(choice) {
   return {
     name: choice.name,
     address,
+    provider: choice.provider,
     async sign(transaction) {
       const signed = await choice.provider.signTransaction(transaction);
       if (!signed || typeof signed.serialize !== "function") {
@@ -100,6 +101,7 @@ async function connectStandard(choice, cluster) {
   return {
     name: choice.name,
     address: account.address,
+    provider: standardIrysProvider(choice, account),
     async sign(transaction) {
       const bytes = unsignedBytes(transaction);
       const feature = choice.wallet.features["solana:signTransaction"];
@@ -108,6 +110,38 @@ async function connectStandard(choice, cluster) {
       const signed = outputs && outputs[0] && outputs[0].signedTransaction;
       if (!signed) throw new Error("The wallet did not return a signed transaction.");
       return signed;
+    },
+  };
+}
+
+function standardIrysProvider(choice, account) {
+  const keyBytes = account.publicKey instanceof Uint8Array ? account.publicKey : new Uint8Array();
+  return {
+    publicKey: {
+      toBuffer() {
+        return keyBytes;
+      },
+    },
+    async signMessage(message) {
+      const feature = choice.wallet.features["solana:signMessage"];
+      if (!feature) throw new Error("This wallet cannot sign the storage message.");
+      const bytes = message instanceof Uint8Array ? message : new Uint8Array(message);
+      const outputs = await feature.signMessage({ account, message: bytes });
+      const signature = outputs && outputs[0] && outputs[0].signature;
+      if (!(signature instanceof Uint8Array)) throw new Error("The wallet did not return a storage signature.");
+      return signature;
+    },
+    async sendTransaction(transaction, connection, options) {
+      const feature = choice.wallet.features["solana:signTransaction"];
+      if (!feature) throw new Error("This wallet cannot pay for storage.");
+      const outputs = await feature.signTransaction({
+        account,
+        transaction: unsignedBytes(transaction),
+        chain: "solana:mainnet",
+      });
+      const signed = outputs && outputs[0] && outputs[0].signedTransaction;
+      if (!signed) throw new Error("The wallet did not return a signed storage payment.");
+      return connection.sendRawTransaction(signed, options || {});
     },
   };
 }
