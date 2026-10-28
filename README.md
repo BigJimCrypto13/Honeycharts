@@ -13,18 +13,20 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 - Read a Honey Score from 0 to 100. It restates public RugCheck and DexScreener flags. It is not a safety rating and it is not financial advice.
 - Browse Solana tokens from DexScreener's boosted list and latest profiles. Boosted rows are labeled as paid promotion.
 - Share a token with `?ca=` (older `#ca` links still open). Copy the address, copy the link, or open an X post draft.
+- Open a Jupiter swap for the token you are viewing. It stays collapsed until you press Swap. The form is Jupiter's official plugin, prefilled from SOL into that token. There is no referral fee.
 
 ## Security promise
 
-Honeycharts will never ask for your seed phrase, private key, or wallet signature.
+Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving.
 
-- There is no wallet connect, no transaction signing, and no approval flow.
+- Honeycharts never connects a wallet, reads a public key, or asks you to sign. The Swap button only loads Jupiter's plugin. Connecting and approving stay inside that plugin and your wallet extension.
+- No referral fee or platform fee is configured. Adding one later requires a lawyer's review first.
 - The Hive is local. Nothing in the watchlist is uploaded by this site.
 - Contract addresses must be base58 and 32–44 characters.
 - Text from DexScreener and RugCheck is written as text, not HTML.
 - External links must be `http` or `https`, and they open with `rel="noopener noreferrer"`.
 - Imported Hive files are rejected unless they match the version 1 backup shape.
-- A Content-Security-Policy meta tag limits scripts to this site and limits network calls and frames to DexScreener and RugCheck.
+- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, and `api.mainnet-beta.solana.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
 - There are no third-party trackers.
 
 ## Run it locally
@@ -53,6 +55,9 @@ node --test
 - `https://api.dexscreener.com/token-profiles/latest/v1`
 - `https://api.rugcheck.xyz/v1/tokens/<CA>/report`
 - Chart frame: `https://dexscreener.com/solana/<CA>?embed=1&theme=dark`
+- Swap panel, only after you press Swap: `https://plugin.jup.ag/plugin-v1.js` (Jupiter then loads its own app bundle from that host)
+
+The swap form is Jupiter's. Honeycharts does not build, sign, or send the transaction. If the plugin does not load, the panel links to `https://jup.ag/swap/SOL-<CA>`.
 
 Figures are cached in memory for a short time, and refresh buttons wait two seconds between forced reloads. RugCheck reports can be large and the API can rate-limit. If that call fails, the Honey Score stays incomplete and says so.
 

@@ -13,6 +13,7 @@ import {
   asFinite,
 } from "./format.js";
 import { bandKey, meterStep } from "./score.js";
+import { jupiterSwapUrl } from "./swap.js";
 
 const LEVEL_LABEL = { danger: "Risk", warn: "Watch", info: "Note" };
 
@@ -70,6 +71,7 @@ export function renderToken(root, model, actions) {
   article.append(renderTokenHead(model, actions));
   article.append(renderChart(model.ca));
   article.append(renderStats(model));
+  article.append(renderSwap(model.ca, actions));
   article.append(renderScore(model));
   root.append(article);
 }
@@ -380,6 +382,45 @@ function stat(label, value) {
     el("dt", { text: label }),
     el("dd", { text: value }),
   ]);
+}
+
+function renderSwap(ca, actions) {
+  const section = el("section", {
+    className: "panel token-swap",
+    attrs: { "data-region": "swap", "aria-labelledby": "swap-heading" },
+  });
+  section.append(el("div", { className: "section-head" }, [
+    el("div", {}, [
+      el("h2", { attrs: { id: "swap-heading" }, text: "Swap" }),
+      el("p", { className: "fine", text: "Optional. SOL into this token, inside Jupiter." }),
+    ]),
+    el("button", {
+      className: "primary",
+      text: "Swap",
+      attrs: {
+        type: "button",
+        "data-action": "swap-toggle",
+        "aria-expanded": "false",
+        "aria-controls": "swap-body",
+      },
+      on: { click: () => actions.toggleSwap() },
+    }),
+  ]));
+  const body = el("div", { attrs: { id: "swap-body", "data-swap-body": "true", hidden: "hidden" } });
+  body.append(el("p", {
+    className: "disclaimer",
+    text: "Swaps are executed by Jupiter. Honeycharts is not a broker or custodian. Meme coins are high risk. Not financial advice, DYOR.",
+  }));
+  body.append(el("p", {
+    className: "fine",
+    text: "Connecting a wallet and approving a transaction happens inside Jupiter, in your own wallet extension. Honeycharts never sees your keys.",
+  }));
+  body.append(el("p", { className: "muted", attrs: { "data-swap-status": "true" } }));
+  body.append(el("div", { attrs: { id: "swap-mount" } }));
+  const href = jupiterSwapUrl(ca);
+  if (href) body.append(externalLink(href, "Swap on Jupiter", "text-link"));
+  section.append(body);
+  return section;
 }
 
 function renderScore(model) {

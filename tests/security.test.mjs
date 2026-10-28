@@ -5,6 +5,7 @@ import { extractCA, isValidCA, safeHttpUrl, safeImageUrl, clipText } from "../js
 import { appBase, homePath, hivePath, tokenPath } from "../js/paths.js";
 import { batchUrl, pickBestPair } from "../js/api.js";
 import { buildHoneyScore, bandCopy } from "../js/score.js";
+import { jupiterSwapUrl, SOL_MINT } from "../js/swap.js";
 import {
   memoryStorage,
   createHive,
@@ -211,6 +212,19 @@ describe("hive backup", () => {
   });
 });
 
+describe("jupiter swap link", () => {
+  it("builds a SOL-to-token Jupiter URL and does not enable a referral fee", () => {
+    assert.equal(jupiterSwapUrl(BONK), `https://jup.ag/swap/SOL-${BONK}`);
+    assert.equal(jupiterSwapUrl("nope"), null);
+    assert.equal(SOL_MINT, "So11111111111111111111111111111111111111112");
+    const source = readFileSync(new URL("../js/swap.js", import.meta.url), "utf8");
+    assert.match(source, /REFERRAL_FEE_ENABLED = false/);
+    assert.match(source, /lawyer/);
+    assert.doesNotMatch(source, /enableWalletPassthrough:\s*true/);
+    assert.doesNotMatch(source, /window\.solana|signTransaction|signMessage|privateKey|seed phrase/);
+  });
+});
+
 describe("page source", () => {
   it("keeps scripts, styles, and wallet access out of the static page", () => {
     const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -218,14 +232,16 @@ describe("page source", () => {
       .filter((name) => name.endsWith(".js"))
       .map((name) => readFileSync(new URL(`../js/${name}`, import.meta.url), "utf8"))
       .join("\n");
-    assert.match(html, /script-src 'self'/);
+    assert.match(html, /script-src 'self' https:\/\/plugin\.jup\.ag/);
     assert.match(html, /https:\/\/api\.dexscreener\.com/);
     assert.match(html, /https:\/\/api\.rugcheck\.xyz/);
     assert.match(html, /frame-src https:\/\/dexscreener\.com/);
-    assert.doesNotMatch(html, /unsafe-inline|unsafe-eval/);
+    assert.match(html, /style-src-elem[^;]*'unsafe-inline'/);
+    assert.doesNotMatch(html, /script-src[^;]*unsafe-inline/);
+    assert.doesNotMatch(html, /unsafe-eval/);
     assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)/i);
     assert.doesNotMatch(html, /\son\w+=/i);
-    assert.match(html, /Honeycharts will never ask for your seed phrase, private key, or wallet signature\./);
+    assert.match(html, /Honeycharts will never ask for your seed phrase or private key\. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving\./);
     assert.doesNotMatch(js, /innerHTML|insertAdjacentHTML|outerHTML|document\.write|eval\(|new Function|wallet-adapter|window\.solana|signTransaction|signMessage/);
     assert.doesNotMatch(html + js, /style="/);
   });

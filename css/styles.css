@@ -425,6 +425,13 @@ details p { margin-top: 8px; color: var(--muted); }
   border: 0;
   background: #090807;
 }
+#swap-mount,
+#jupiter-plugin-instance {
+  width: 100%;
+  min-height: 600px;
+  margin-top: 12px;
+}
+#swap-body .text-link { display: inline-block; margin-top: 8px; }
 
 .toolbar { justify-content: flex-start; }
 .toolbar .count { margin-right: auto; font-variant-numeric: tabular-nums; }
@@ -504,6 +511,7 @@ details p { margin-top: 8px; color: var(--muted); }
     grid-template-areas:
       "chart head"
       "chart stats"
+      "chart swap"
       "chart score";
     align-items: start;
   }
@@ -517,6 +525,7 @@ details p { margin-top: 8px; color: var(--muted); }
   .chart-frame { height: calc(100dvh - 168px); min-height: 560px; }
   .token-head { grid-area: head; }
   .token-stats { grid-area: stats; }
+  .token-swap { grid-area: swap; }
   .token-score { grid-area: score; }
   .swipe-hint { display: none; }
 }

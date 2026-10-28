@@ -11,6 +11,7 @@ import {
   IMPORT_ERRORS,
 } from "./store.js";
 import { buildHoneyScore } from "./score.js";
+import { mountSwap } from "./swap.js";
 import { el, clear } from "./dom.js";
 import {
   renderHome,
@@ -47,6 +48,7 @@ const actions = {
   copyCa,
   copyLink,
   refreshToken,
+  toggleSwap,
   sortHive,
   setNote,
   removeHive,
@@ -345,6 +347,37 @@ async function refreshToken() {
     score: buildHoneyScore(pair, report, { reportError }),
   });
   if (!dexFailed && !reportError) setStatus("Figures refreshed.");
+}
+
+async function toggleSwap() {
+  const route = currentRoute();
+  if (route.name !== "token") return;
+  const body = view.querySelector("[data-swap-body]");
+  const button = view.querySelector("[data-action='swap-toggle']");
+  const status = view.querySelector("[data-swap-status]");
+  if (!body || !button) return;
+  const opening = body.hasAttribute("hidden");
+  if (!opening) {
+    body.setAttribute("hidden", "");
+    button.setAttribute("aria-expanded", "false");
+    button.textContent = "Swap";
+    return;
+  }
+  body.removeAttribute("hidden");
+  button.setAttribute("aria-expanded", "true");
+  button.textContent = "Hide swap";
+  if (view.querySelector("#jupiter-plugin-instance")) return;
+  if (status) status.textContent = "Loading Jupiter…";
+  try {
+    await mountSwap(route.ca);
+    if (currentRoute().name !== "token" || currentRoute().ca !== route.ca) return;
+    if (status) status.textContent = "";
+  } catch {
+    if (currentRoute().name !== "token" || currentRoute().ca !== route.ca) return;
+    if (status) {
+      status.textContent = "Jupiter's swap panel did not load in this browser. Use the link below. Honeycharts still does not touch your wallet.";
+    }
+  }
 }
 
 function toggleHive() {
