@@ -13,6 +13,7 @@ import {
 import { buildHoneyScore } from "./score.js";
 import { mountSwap } from "./swap.js";
 import { LAUNCH_ENABLED, brandLabel, copyrightNotice } from "./config.js";
+import { quoteStorageLamports } from "./irys-upload.js";
 import { validateLaunch } from "./launch-form.js";
 import { renderLaunch } from "./launch-ui.js";
 import {
@@ -494,9 +495,11 @@ function reviewLaunch() {
   launchState.form = parsed.value;
   launchState.step = "review";
   launchState.wallet = null;
+  launchState.storageLamports = null;
   launchState.message = "";
   launchState.wallets = listLaunchWallets();
   renderLaunchView();
+  quoteLaunchStorage(parsed.value);
 }
 
 function editLaunch() {
@@ -510,6 +513,20 @@ function patchLaunchFlag(key) {
   if (key !== "mainnetConfirmed") return;
   launchState[key] = !launchState[key];
   renderLaunchView();
+}
+
+async function quoteLaunchStorage(form) {
+  if (!form || form.metadataUri || !form.image) return;
+  const bytes = form.image.size + 1200;
+  try {
+    const lamports = await quoteStorageLamports(bytes);
+    if (launchState.step !== "review" || launchState.form !== form) return;
+    launchState.storageLamports = lamports;
+  } catch {
+    if (launchState.step !== "review" || launchState.form !== form) return;
+    launchState.storageLamports = null;
+  }
+  if (currentRoute().name === "launch") renderLaunchView();
 }
 
 function refreshLaunchWallets() {
@@ -546,7 +563,7 @@ async function signLaunch() {
   renderLaunchView();
   let mint = null;
   try {
-    const metadataUri = await uploadLaunchMetadata(launchState.form);
+    const metadataUri = await uploadLaunchMetadata(launchState.form, launchState.wallet.provider);
     const solana = await loadSolana();
     const connection = new solana.Connection(clusterUrl(), "confirmed");
     const prepared = await prepareLaunch({

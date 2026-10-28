@@ -260,7 +260,12 @@ describe("page source", () => {
     assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)/i);
     assert.doesNotMatch(html, /\son\w+=/i);
     assert.match(html, /Honeycharts will never ask for your seed phrase or private key\. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving\./);
-    assert.doesNotMatch(js, /innerHTML|insertAdjacentHTML|outerHTML|document\.write|eval\(|new Function|wallet-adapter|window\.solana|signMessage/);
+    assert.doesNotMatch(js, /innerHTML|insertAdjacentHTML|outerHTML|document\.write|eval\(|new Function|wallet-adapter|window\.solana/);
+    const withoutMessage = files
+      .filter((name) => name !== "wallet.js" && name !== "irys-upload.js")
+      .map((name) => readFileSync(new URL(`../js/${name}`, import.meta.url), "utf8"))
+      .join("\n");
+    assert.doesNotMatch(withoutMessage, /signMessage/);
     assert.doesNotMatch(withoutWallet, /signTransaction/);
     assert.doesNotMatch(js, /seed phrase|privateKey|secretKey\s*=/);
     assert.doesNotMatch(html + js, /style="/);

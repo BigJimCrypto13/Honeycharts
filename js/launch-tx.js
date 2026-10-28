@@ -1,5 +1,5 @@
 import { launchFeeConfig } from "./config.js";
-import { pumpMetadata } from "./launch-form.js";
+import { uploadPermanent } from "./irys-upload.js";
 
 export const CLUSTERS = {
   mainnet: "https://api.mainnet-beta.solana.com",
@@ -7,8 +7,6 @@ export const CLUSTERS = {
 
 export const PUMP_PRIORITY_FEE_SOL = 0.00005;
 const PUMP_LOCAL = "https://pumpportal.fun/api/trade-local";
-const PUMP_IPFS = "https://pump.fun/api/ipfs";
-const LITTERBOX = "https://litterbox.catbox.moe/resources/internals/api.php";
 
 let solanaPromise = null;
 
@@ -44,74 +42,9 @@ export function forgetMint(mint) {
   if (mint && mint.secretKey) mint.secretKey.fill(0);
 }
 
-export async function uploadLaunchMetadata(form) {
+export async function uploadLaunchMetadata(form, provider) {
   if (form.metadataUri) return form.metadataUri;
-  const fromPump = await tryPumpIpfs(form);
-  if (fromPump) return fromPump;
-  return uploadViaLitterbox(form);
-}
-
-async function tryPumpIpfs(form) {
-  try {
-    const body = new FormData();
-    body.append("file", form.image, fileName(form.image, "token.png"));
-    body.append("name", form.name);
-    body.append("symbol", form.symbol);
-    body.append("description", form.description);
-    body.append("twitter", form.twitter || "");
-    body.append("telegram", form.telegram || "");
-    body.append("website", form.website || "");
-    body.append("showName", "true");
-    const response = await fetch(PUMP_IPFS, { method: "POST", body, signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return "";
-    const payload = await response.json().catch(() => null);
-    const uri = payload && (payload.metadataUri || payload.metadata_uri);
-    return httpsUri(uri);
-  } catch {
-    return "";
-  }
-}
-
-async function uploadViaLitterbox(form) {
-  const imageUrl = await uploadLitterboxFile(form.image, fileName(form.image, "token.png"));
-  const json = JSON.stringify(pumpMetadata(form, imageUrl));
-  const metadataFile = new File([json], "metadata.json", { type: "application/json" });
-  return uploadLitterboxFile(metadataFile, "metadata.json");
-}
-
-async function uploadLitterboxFile(file, name) {
-  const body = new FormData();
-  body.append("reqtype", "fileupload");
-  body.append("time", "72h");
-  body.append("fileToUpload", file, name);
-  const response = await fetch(LITTERBOX, { method: "POST", body });
-  const text = (await response.text()).trim();
-  const url = hostedFileUrl(text);
-  if (!response.ok || !url) throw new Error("The image upload did not return a link. Paste an https metadata link and try again.");
-  return url;
-}
-
-export function hostedFileUrl(text) {
-  const value = String(text || "").trim();
-  if (!/^https:\/\/litter\.catbox\.moe\/[A-Za-z0-9]+\.[A-Za-z0-9]{2,5}$/.test(value)) return "";
-  return value;
-}
-
-function httpsUri(value) {
-  const text = typeof value === "string" ? value.trim() : "";
-  if (!/^https:\/\/[^\s]+$/.test(text) || text.length > 300) return "";
-  try {
-    const url = new URL(text);
-    if (url.username || url.password || url.protocol !== "https:") return "";
-    return url.href;
-  } catch {
-    return "";
-  }
-}
-
-function fileName(file, fallback) {
-  const name = file && typeof file.name === "string" ? file.name : "";
-  return /^[A-Za-z0-9._-]{1,80}$/.test(name) ? name : fallback;
+  return uploadPermanent(form, provider);
 }
 
 export async function prepareLaunch({

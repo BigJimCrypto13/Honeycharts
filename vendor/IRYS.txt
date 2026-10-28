@@ -1,0 +1,11 @@
+Vendored browser bundle for permanent launch metadata. The site does not need a build step.
+Regenerate only by rebundling these exact package versions with esbuild for the browser,
+aliasing node "crypto" to crypto-browserify and "stream" to stream-browserify.
+
+@irys/web-upload@0.0.15
+@irys/web-upload-solana@0.1.8
+
+sha256 irys-bundle.js
+d092fe35a5f1f6c17c3fb8d5e6fc560ac829fbc56e116f0fa37632edd225a5f3
+
+The bundle is served from this site (script-src 'self'). It is loaded only when a launch stores metadata.

@@ -43,7 +43,7 @@ export function describeLaunch(form, fee) {
   const lines = [
     form.metadataUri
       ? "Use the metadata link you pasted, then create a Pump.fun bonding-curve token that can be traded immediately."
-      : "Upload the image and metadata with no API key, then create a Pump.fun bonding-curve token that can be traded immediately.",
+      : "Store the image and metadata permanently on Arweave, paid by your wallet, then create a Pump.fun bonding-curve token that can be traded immediately.",
   ];
   if (form.initialBuySol > 0) {
     lines.push(`Buy ${form.initialBuySol} SOL of the new token in the same transaction.`);
