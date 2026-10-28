@@ -224,11 +224,11 @@ describe("jupiter swap link", () => {
   });
 
   it("charges 50 bps only when a public referral account is set", () => {
-    assert.equal(JUPITER_REFERRAL_ACCOUNT, "");
+    assert.equal(JUPITER_REFERRAL_ACCOUNT, "6QwK1AUisPZrKHRYuYforGxNnY8hVGMjcvhEWAb5csDU");
     assert.equal(FEE_BPS, 50);
-    assert.equal(buildSwapForm(BONK).referralAccount, undefined);
-    assert.equal(buildSwapForm(BONK).referralFee, undefined);
-    assert.equal(feeDisclosure(), "");
+    assert.equal(buildSwapForm(BONK).referralAccount, JUPITER_REFERRAL_ACCOUNT);
+    assert.equal(buildSwapForm(BONK).referralFee, 50);
+    assert.equal(feeDisclosure(), "Includes a 0.5% Honeycharts fee.");
 
     const on = resolveReferralFee(BONK, 50);
     assert.deepEqual(on, { account: BONK, bps: 50 });

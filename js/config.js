@@ -2,13 +2,13 @@ import { isValidCA } from "./sanitize.js";
 
 // Jupiter referral fee. This is the only place that turns the fee on.
 //
-// JUPITER_REFERRAL_ACCOUNT is the referral account public key from
-// https://referral.jup.ag (the Referral Key). It is a public address.
-// Leave it as an empty string until that key exists. An empty or invalid
+// JUPITER_REFERRAL_ACCOUNT is the public referral account (Referral Key)
+// from https://referral.jup.ag. It belongs to Jupiter Ultra project
+// DkiqsTrw1u1bYFumumC7sCG2S8K25qc2vemJFHyW2wJc. An empty or invalid
 // value means the swap runs with no Honeycharts fee.
 //
 // Do not put a wallet secret or key file in this repo.
-export const JUPITER_REFERRAL_ACCOUNT = "";
+export const JUPITER_REFERRAL_ACCOUNT = "6QwK1AUisPZrKHRYuYforGxNnY8hVGMjcvhEWAb5csDU";
 
 // Integrator fee in basis points. 50 bps is 0.5%.
 // Jupiter accepts 50–255 bps. This file's value is clamped to that range
