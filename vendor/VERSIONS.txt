@@ -1,0 +1,11 @@
+Vendored browser bundle for the Launch tab. The site does not need a build step.
+Regenerate only by rebundling these exact package versions.
+
+@solana/web3.js@1.98.4
+@solana/spl-token@0.4.15
+
+sha256 solana-bundle.js
+161f6a379dce13027b885d9b1d34169bc6ff040c4cd8a85acb96d15fd9b2b094
+
+The bundle is served from this site (script-src 'self'), so a third-party CDN and an SRI
+script tag are not used. The hash above is the pin.
