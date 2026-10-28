@@ -14,6 +14,7 @@ import {
 } from "./format.js";
 import { bandKey, meterStep } from "./score.js";
 import { jupiterSwapUrl } from "./swap.js";
+import { feeDisclosure } from "./config.js";
 
 const LEVEL_LABEL = { danger: "Risk", warn: "Watch", info: "Note" };
 
@@ -411,6 +412,8 @@ function renderSwap(ca, actions) {
     className: "disclaimer",
     text: "Swaps are executed by Jupiter. Honeycharts is not a broker or custodian. Meme coins are high risk. Not financial advice, DYOR.",
   }));
+  const feeText = feeDisclosure();
+  if (feeText) body.append(el("p", { className: "fee-note", text: feeText }));
   body.append(el("p", {
     className: "fine",
     text: "Connecting a wallet and approving a transaction happens inside Jupiter, in your own wallet extension. Honeycharts never sees your keys.",

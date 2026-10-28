@@ -432,6 +432,14 @@ details p { margin-top: 8px; color: var(--muted); }
   margin-top: 12px;
 }
 #swap-body .text-link { display: inline-block; margin-top: 8px; }
+.fee-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--gold-2);
+  border-radius: 10px;
+  color: var(--gold);
+  font-weight: 700;
+}
 
 .toolbar { justify-content: flex-start; }
 .toolbar .count { margin-right: auto; font-variant-numeric: tabular-nums; }

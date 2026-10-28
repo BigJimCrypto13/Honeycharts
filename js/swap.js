@@ -1,16 +1,11 @@
 import { isValidCA } from "./sanitize.js";
+import { referralFeeConfig } from "./config.js";
 
 // Official Jupiter Plugin loader. The loader pulls plugin-<version>-app.js itself.
 // https://developers.jup.ag/docs/tool-kits/plugin/html-app-example
 const PLUGIN_SRC = "https://plugin.jup.ag/plugin-v1.js";
 
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
-
-// Referral fee is disabled. Do not pass referralAccount or referralFee until a
-// lawyer reviews a Jupiter referral arrangement. A future config would look like:
-// referralAccount: "<referral account pubkey>",
-// referralFee: 0,
-const REFERRAL_FEE_ENABLED = false;
 
 let scriptPromise = null;
 
@@ -34,20 +29,22 @@ export async function mountSwap(ca) {
     integratedTargetId: "swap-mount",
     autoConnect: false,
     enableWalletPassthrough: false,
-    formProps: swapForm(ca),
+    formProps: buildSwapForm(ca),
   });
   await waitForWidget();
 }
 
-function swapForm(ca) {
+export function buildSwapForm(ca) {
   const form = {
     initialInputMint: SOL_MINT,
     initialOutputMint: ca,
     fixedMint: ca,
   };
-  if (REFERRAL_FEE_ENABLED) {
-    throw new Error("referral-fee-disabled");
-  }
+  const fee = referralFeeConfig();
+  if (!fee) return form;
+  // Plugin field referralFee is the fee in basis points (feeBps on the order).
+  form.referralAccount = fee.account;
+  form.referralFee = fee.bps;
   return form;
 }
 

@@ -5,7 +5,8 @@ import { extractCA, isValidCA, safeHttpUrl, safeImageUrl, clipText } from "../js
 import { appBase, homePath, hivePath, tokenPath } from "../js/paths.js";
 import { batchUrl, pickBestPair } from "../js/api.js";
 import { buildHoneyScore, bandCopy } from "../js/score.js";
-import { jupiterSwapUrl, SOL_MINT } from "../js/swap.js";
+import { jupiterSwapUrl, SOL_MINT, buildSwapForm } from "../js/swap.js";
+import { FEE_BPS, JUPITER_REFERRAL_ACCOUNT, feeDisclosure, resolveReferralFee } from "../js/config.js";
 import {
   memoryStorage,
   createHive,
@@ -213,15 +214,29 @@ describe("hive backup", () => {
 });
 
 describe("jupiter swap link", () => {
-  it("builds a SOL-to-token Jupiter URL and does not enable a referral fee", () => {
+  it("builds a SOL-to-token Jupiter URL and keeps the wallet inside the plugin", () => {
     assert.equal(jupiterSwapUrl(BONK), `https://jup.ag/swap/SOL-${BONK}`);
     assert.equal(jupiterSwapUrl("nope"), null);
     assert.equal(SOL_MINT, "So11111111111111111111111111111111111111112");
     const source = readFileSync(new URL("../js/swap.js", import.meta.url), "utf8");
-    assert.match(source, /REFERRAL_FEE_ENABLED = false/);
-    assert.match(source, /lawyer/);
     assert.doesNotMatch(source, /enableWalletPassthrough:\s*true/);
     assert.doesNotMatch(source, /window\.solana|signTransaction|signMessage|privateKey|seed phrase/);
+  });
+
+  it("charges 50 bps only when a public referral account is set", () => {
+    assert.equal(JUPITER_REFERRAL_ACCOUNT, "");
+    assert.equal(FEE_BPS, 50);
+    assert.equal(buildSwapForm(BONK).referralAccount, undefined);
+    assert.equal(buildSwapForm(BONK).referralFee, undefined);
+    assert.equal(feeDisclosure(), "");
+
+    const on = resolveReferralFee(BONK, 50);
+    assert.deepEqual(on, { account: BONK, bps: 50 });
+    assert.equal(resolveReferralFee(BONK, 1000).bps, 255);
+    assert.equal(resolveReferralFee(BONK, 1).bps, 50);
+    assert.equal(resolveReferralFee("", 50), null);
+    assert.equal(resolveReferralFee("1".repeat(88), 50), null);
+    assert.equal(resolveReferralFee("  " + BONK + " ", 50).account, BONK);
   });
 });
 
