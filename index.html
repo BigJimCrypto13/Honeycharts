@@ -46,11 +46,12 @@
         </nav>
       </div>
       <form id="search-form" class="search" role="search" method="get">
-        <label for="ca-input">Solana contract address</label>
+        <label for="ca-input">Token name, ticker, or contract address</label>
         <div class="search-row">
-          <input id="ca-input" name="ca" type="text" maxlength="200" placeholder="Paste a contract address" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+          <input id="ca-input" name="ca" type="text" maxlength="200" placeholder="Search bonk, $WIF, or paste an address" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results">
           <button class="primary" type="submit">Open chart</button>
         </div>
+        <div id="search-results" class="search-results" role="listbox" hidden></div>
       </form>
       <p class="trust">Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving.</p>
       <div class="honey-drip" aria-hidden="true"></div>

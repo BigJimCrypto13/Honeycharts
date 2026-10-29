@@ -1,4 +1,5 @@
 import { el, clear, externalLink } from "./dom.js";
+import { markerLabel } from "./search.js";
 import { safeImageUrl, safeHttpUrl, safeLinkLabel, clipText, isValidCA } from "./sanitize.js";
 import { HEURISTIC_SUMMARY } from "./creator.js";
 import {
@@ -18,6 +19,62 @@ import { jupiterSwapUrl } from "./swap.js";
 import { feeDisclosure } from "./config.js";
 
 const LEVEL_LABEL = { danger: "Risk", warn: "Watch", info: "Note" };
+
+export function renderSearchResults(root, model) {
+  clear(root);
+  const open = Boolean(model && model.open);
+  if (!open) {
+    root.setAttribute("hidden", "");
+    return;
+  }
+  root.removeAttribute("hidden");
+  if (model.status) {
+    root.append(el("p", { className: "search-status muted", text: model.status }));
+  }
+  const results = Array.isArray(model.results) ? model.results : [];
+  results.forEach((row, index) => {
+    const active = index === model.active;
+    const button = el("button", {
+      className: active ? "search-hit is-active" : "search-hit",
+      attrs: {
+        type: "button",
+        role: "option",
+        id: `search-opt-${index}`,
+        "aria-selected": active ? "true" : "false",
+      },
+      on: { click: () => model.onPick(row.ca) },
+    });
+    button.append(tokenAvatar(row.image, row.symbol || row.name));
+    const copy = el("span", { className: "search-copy" });
+    const title = el("span", { className: "search-title" });
+    title.append(el("span", { className: "search-name", text: row.name || row.symbol || "Unknown token" }));
+    title.append(el("span", { className: "symbol", text: row.symbol || shortCa(row.ca) }));
+    const mark = markerLabel(row);
+    if (mark) {
+      title.append(el("span", { className: "search-mark", text: mark }));
+    }
+    title.append(el("span", { className: "search-price", text: formatPrice(row.priceUsd) }));
+    copy.append(title);
+    const meta = searchMeta(row);
+    if (meta) copy.append(el("span", { className: "search-meta", text: meta }));
+    button.append(copy);
+    root.append(button);
+  });
+  if (results.length) {
+    root.append(el("p", {
+      className: "fine search-note",
+      text: "Sorted by liquidity times 24h volume. The Honey Score is on the token page.",
+    }));
+  }
+}
+
+function searchMeta(row) {
+  const parts = [];
+  if (row.marketCap != null) parts.push(`MCap ${formatCompactUsd(row.marketCap)}`);
+  else if (row.liquidityUsd != null) parts.push(`Liq ${formatCompactUsd(row.liquidityUsd)}`);
+  if (row.volumeH24 != null) parts.push(`Vol ${formatCompactUsd(row.volumeH24)}`);
+  return parts.join(" · ");
+}
 
 export function renderHome(root, model, actions) {
   clear(root);
