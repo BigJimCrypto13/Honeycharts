@@ -486,10 +486,41 @@ details p { margin-top: 8px; color: var(--muted); }
 #swap-mount,
 #jupiter-plugin-instance {
   width: 100%;
-  min-height: 600px;
-  margin-top: 12px;
+  min-height: 560px;
+  margin-top: 8px;
 }
-#swap-body .text-link { display: inline-block; margin-top: 8px; }
+.token-swap .text-link { display: inline-block; margin-top: 8px; }
+.trade-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0;
+}
+.trade-tab {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-weight: 800;
+}
+.trade-tab[aria-selected="true"][data-side="buy"] {
+  background: linear-gradient(180deg, #ffd54a, #e89a00);
+  color: var(--ink);
+  border-color: #ffd54a;
+}
+.trade-tab[aria-selected="true"][data-side="sell"] {
+  background: #5c2420;
+  color: #fff8f6;
+  border-color: #e07a6a;
+}
+.amount-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.amount-btn { flex: 1; min-height: 44px; padding: 8px; }
+.amount-btn[aria-pressed="true"] {
+  border-color: var(--gold);
+  color: var(--ink);
+  background: linear-gradient(180deg, #ffd54a, #e89a00);
+}
 .field { display: grid; gap: 6px; }
 .field span { color: var(--muted); }
 .field input, .field textarea {
@@ -600,8 +631,8 @@ details p { margin-top: 8px; color: var(--muted); }
     grid-template-columns: minmax(0, 1fr) 380px;
     grid-template-areas:
       "chart head"
-      "chart stats"
       "chart swap"
+      "chart stats"
       "chart score";
     align-items: start;
   }

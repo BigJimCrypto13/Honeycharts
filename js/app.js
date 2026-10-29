@@ -11,7 +11,7 @@ import {
   IMPORT_ERRORS,
 } from "./store.js";
 import { buildHoneyScore } from "./score.js";
-import { mountSwap } from "./swap.js";
+import { mountSwap, jupiterSwapUrl, BUY_SOL_AMOUNTS } from "./swap.js";
 import { LAUNCH_ENABLED, brandLabel, copyrightNotice } from "./config.js";
 import { validateLaunch } from "./launch-form.js";
 import { renderLaunch } from "./launch-ui.js";
@@ -24,13 +24,14 @@ import {
   uploadLaunchMetadata,
 } from "./launch-tx.js";
 import { connectLaunchWallet, listLaunchWallets } from "./wallet.js";
-import { el, clear } from "./dom.js";
+import { el, clear, externalLink } from "./dom.js";
 import {
   renderHome,
   renderToken,
   renderHive,
   patchTokenMarket,
   patchTokenScore,
+  renderSwapPanel,
   setHivePressed,
   updateQuotedStats,
 } from "./render.js";
@@ -53,6 +54,8 @@ let homeTimer = 0;
 let hiveSort = { key: "added", dir: "desc" };
 let lastForce = 0;
 let lastHome = null;
+let swapTicket = 0;
+const swapView = { side: "buy", solAmount: null };
 const launchState = {
   cluster: "mainnet",
   step: "form",
@@ -84,7 +87,8 @@ const actions = {
   copyCa,
   copyLink,
   refreshToken,
-  toggleSwap,
+  setSwapSide,
+  setSwapSol,
   sortHive,
   setNote,
   removeHive,
@@ -258,6 +262,8 @@ async function showHive(gen) {
 async function showToken(gen, ca) {
   searchInput.value = ca;
   recent.touch(ca);
+  swapView.side = "buy";
+  swapView.solAmount = null;
   const cached = stats.get(ca);
   let pair = cached && cached.pair ? cached.pair : null;
   renderToken(view, tokenModel(ca, {
@@ -266,6 +272,7 @@ async function showToken(gen, ca) {
     scoreStatus: "loading",
     score: null,
   }), actions);
+  loadSwap(gen, ca);
   if (pair) applyTitle(pair);
 
   try {
@@ -415,34 +422,51 @@ async function refreshToken() {
   if (!dexFailed && !reportError) setStatus("Figures refreshed.");
 }
 
-async function toggleSwap() {
+function setSwapSide(side) {
   const route = currentRoute();
   if (route.name !== "token") return;
-  const body = view.querySelector("[data-swap-body]");
-  const button = view.querySelector("[data-action='swap-toggle']");
+  if (side !== "buy" && side !== "sell") return;
+  if (swapView.side === side) return;
+  swapView.side = side;
+  if (side !== "buy") swapView.solAmount = null;
+  restartSwap(route.ca);
+}
+
+function setSwapSol(sol) {
+  const route = currentRoute();
+  if (route.name !== "token" || swapView.side !== "buy") return;
+  if (!BUY_SOL_AMOUNTS.includes(sol) || swapView.solAmount === sol) return;
+  swapView.solAmount = sol;
+  restartSwap(route.ca);
+}
+
+function restartSwap(ca) {
+  const node = view.querySelector("[data-region='swap']");
+  if (!node) return;
+  node.replaceWith(renderSwapPanel(ca, tokenModel(ca, {}), actions));
+  loadSwap(generation, ca);
+}
+
+async function loadSwap(gen, ca) {
+  const ticket = ++swapTicket;
   const status = view.querySelector("[data-swap-status]");
-  if (!body || !button) return;
-  const opening = body.hasAttribute("hidden");
-  if (!opening) {
-    body.setAttribute("hidden", "");
-    button.setAttribute("aria-expanded", "false");
-    button.textContent = "Swap";
-    return;
-  }
-  body.removeAttribute("hidden");
-  button.setAttribute("aria-expanded", "true");
-  button.textContent = "Hide swap";
-  if (view.querySelector("#jupiter-plugin-instance")) return;
+  const fallback = view.querySelector("[data-swap-fallback]");
+  if (fallback) while (fallback.firstChild) fallback.removeChild(fallback.firstChild);
   if (status) status.textContent = "Loading Jupiter…";
   try {
-    await mountSwap(route.ca);
-    if (currentRoute().name !== "token" || currentRoute().ca !== route.ca) return;
-    if (status) status.textContent = "";
+    await mountSwap(ca, { side: swapView.side, solAmount: swapView.solAmount });
+    if (ticket !== swapTicket || !alive(gen) || currentRoute().ca !== ca) return;
+    const latest = view.querySelector("[data-swap-status]");
+    if (latest) latest.textContent = "";
   } catch {
-    if (currentRoute().name !== "token" || currentRoute().ca !== route.ca) return;
-    if (status) {
-      status.textContent = "Jupiter's swap panel did not load in this browser. Use the link below. Honeycharts still does not touch your wallet.";
+    if (ticket !== swapTicket || !alive(gen) || currentRoute().ca !== ca) return;
+    const latest = view.querySelector("[data-swap-status]");
+    if (latest) {
+      latest.textContent = "Jupiter's trade form did not load in this browser. Use the link below. Honeycharts still does not touch your wallet.";
     }
+    const slot = view.querySelector("[data-swap-fallback]");
+    const href = jupiterSwapUrl(ca);
+    if (slot && href && !slot.firstChild) slot.append(externalLink(href, "Swap on Jupiter", "text-link"));
   }
 }
 
@@ -837,6 +861,8 @@ function tokenModel(ca, extra) {
     dexMessage: extra.dexMessage || "",
     scoreStatus: extra.scoreStatus,
     score: extra.score || null,
+    swapSide: swapView.side,
+    swapSol: swapView.solAmount,
     shareHref: shareHref(
       (pair && pair.baseToken && pair.baseToken.symbol) || (fallback && fallback.symbol) || "",
       (pair && pair.baseToken && pair.baseToken.name) || (fallback && fallback.name) || "",
