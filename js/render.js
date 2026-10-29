@@ -15,7 +15,7 @@ import {
   asFinite,
 } from "./format.js";
 import { bandKey, meterStep } from "./score.js";
-import { jupiterSwapUrl } from "./swap.js";
+import { jupiterSwapUrl, BUY_SOL_AMOUNTS } from "./swap.js";
 import { feeDisclosure } from "./config.js";
 
 const LEVEL_LABEL = { danger: "Risk", warn: "Watch", info: "Note" };
@@ -137,9 +137,9 @@ export function renderToken(root, model, actions) {
   const article = el("article", { className: "token-layout" });
   article.append(renderTokenHead(model, actions));
   article.append(renderChart(model.ca));
+  article.append(renderSwap(model.ca, model, actions));
   article.append(renderStats(model));
   article.append(renderCreator(model));
-  article.append(renderSwap(model.ca, actions));
   article.append(renderScore(model));
   root.append(article);
 }
@@ -658,45 +658,71 @@ function outcomeLabel(outcome) {
   return "not enough data";
 }
 
-function renderSwap(ca, actions) {
+export function renderSwapPanel(ca, model, actions) {
+  return renderSwap(ca, model, actions);
+}
+
+function renderSwap(ca, model, actions) {
+  const side = model && model.swapSide === "sell" ? "sell" : "buy";
+  const solAmount = model ? model.swapSol : null;
   const section = el("section", {
     className: "panel token-swap",
     attrs: { "data-region": "swap", "aria-labelledby": "swap-heading" },
   });
-  section.append(el("div", { className: "section-head" }, [
-    el("div", {}, [
-      el("h2", { attrs: { id: "swap-heading" }, text: "Swap" }),
-      el("p", { className: "fine", text: "Optional. SOL into this token, inside Jupiter." }),
-    ]),
-    el("button", {
-      className: "primary",
-      text: "Swap",
-      attrs: {
-        type: "button",
-        "data-action": "swap-toggle",
-        "aria-expanded": "false",
-        "aria-controls": "swap-body",
-      },
-      on: { click: () => actions.toggleSwap() },
-    }),
-  ]));
-  const body = el("div", { attrs: { id: "swap-body", "data-swap-body": "true", hidden: "hidden" } });
-  body.append(el("p", {
+  section.append(el("h2", { attrs: { id: "swap-heading" }, text: "Trade" }));
+  const tabs = el("div", { className: "trade-tabs", attrs: { role: "tablist", "aria-label": "Buy or sell" } });
+  tabs.append(tradeTab("buy", "Buy", side, actions));
+  tabs.append(tradeTab("sell", "Sell", side, actions));
+  section.append(tabs);
+  if (side === "buy") {
+    const amounts = el("div", { className: "amount-row" });
+    for (const sol of BUY_SOL_AMOUNTS) {
+      amounts.append(el("button", {
+        className: "ghost amount-btn",
+        text: `${sol} SOL`,
+        attrs: {
+          type: "button",
+          "aria-pressed": solAmount === sol ? "true" : "false",
+        },
+        on: { click: () => actions.setSwapSol(sol) },
+      }));
+    }
+    section.append(amounts);
+  } else {
+    section.append(el("p", {
+      className: "fine",
+      text: "Enter the sell amount in the Jupiter form. This page does not read your wallet, so it cannot fill a percent of your balance.",
+    }));
+  }
+  section.append(el("p", {
     className: "disclaimer",
     text: "Swaps are executed by Jupiter. Honeycharts is not a broker or custodian. Meme coins are high risk. Not financial advice, DYOR.",
   }));
   const feeText = feeDisclosure();
-  if (feeText) body.append(el("p", { className: "fee-note", text: feeText }));
-  body.append(el("p", {
+  if (feeText) section.append(el("p", { className: "fee-note", text: feeText }));
+  section.append(el("p", {
     className: "fine",
-    text: "Connecting a wallet and approving a transaction happens inside Jupiter, in your own wallet extension. Honeycharts never sees your keys.",
+    text: "Connect Phantom, Solflare, or another wallet in Jupiter's picker. Approval stays in that wallet. Honeycharts never sees your keys.",
   }));
-  body.append(el("p", { className: "muted", attrs: { "data-swap-status": "true" } }));
-  body.append(el("div", { attrs: { id: "swap-mount" } }));
-  const href = jupiterSwapUrl(ca);
-  if (href) body.append(externalLink(href, "Swap on Jupiter", "text-link"));
-  section.append(body);
+  section.append(el("p", { className: "muted", attrs: { "data-swap-status": "true" } }));
+  section.append(el("div", { attrs: { id: "swap-mount" } }));
+  section.append(el("div", { attrs: { "data-swap-fallback": "true" } }));
   return section;
+}
+
+function tradeTab(side, label, current, actions) {
+  return el("button", {
+    className: "trade-tab",
+    text: label,
+    attrs: {
+      type: "button",
+      role: "tab",
+      "data-side": side,
+      "aria-selected": current === side ? "true" : "false",
+      id: `trade-${side}`,
+    },
+    on: { click: () => actions.setSwapSide(side) },
+  });
 }
 
 function renderScore(model) {

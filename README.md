@@ -13,7 +13,7 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 - Read a Honey Score from 0 to 100. It restates public RugCheck and DexScreener flags. It is not a safety rating and it is not financial advice.
 - Browse Solana tokens from DexScreener's boosted list and latest profiles. Boosted rows are labeled as paid promotion.
 - Share a token with `?ca=` (older `#ca` links still open). Copy the address, copy the link, or open an X post draft.
-- Open a Jupiter swap for the token you are viewing. It stays collapsed until you press Swap. The form is Jupiter's official plugin, prefilled from SOL into that token, with a 0.5% Honeycharts fee (`referralAccount` and `referralFee` of 50 bps).
+- Buy or sell from the token page. The Jupiter form is open next to the chart (under the chart on a phone), with Buy (SOL to the token) and Sell (token to SOL) tabs. Buy has 0.1, 0.5, and 1 SOL shortcuts. Sell amount stays in Jupiter's form. Wallet connect and signing stay inside Jupiter. The form includes a 0.5% Honeycharts fee (`referralAccount` and `referralFee` of 50 bps).
 - Launch a Pump.fun bonding-curve token from the Launch tab. It is mainnet only, tradable immediately, and asks for one signature after a confirmation checkbox. The review screen says `Includes 0.02 SOL Honeycharts launch fee`.
 
 ## Security promise
@@ -60,9 +60,9 @@ node --test
 - `https://api.rugcheck.xyz/v1/tokens/<CA>/report`
 - Read-only Solana JSON-RPC at `https://solana-rpc.publicnode.com` (`getSignaturesForAddress`, `getTransaction`). `api.mainnet-beta.solana.com` rejects browser origins, so deployer lookups use the public node. No API key. The calls do not sign or send transactions.
 - Chart frame: `https://dexscreener.com/solana/<CA>?embed=1&theme=dark`
-- Swap panel, only after you press Swap: `https://plugin.jup.ag/plugin-v1.js` (Jupiter then loads its own app bundle from that host)
+- Swap panel on each token page: `https://plugin.jup.ag/plugin-v1.js` (Jupiter then loads its own app bundle from that host)
 
-The swap form is Jupiter's. Honeycharts does not build, sign, or send the transaction. If the plugin does not load, the panel links to `https://jup.ag/swap/SOL-<CA>`.
+The swap form is Jupiter's. Honeycharts does not build, sign, or send the transaction. Buy and Sell call `Jupiter.init` again with `initialInputMint` and `initialOutputMint` swapped. A buy shortcut sets `initialAmount` in lamports. If the plugin does not load, the panel links to `https://jup.ag/swap/SOL-<CA>`.
 
 ## Launch a token
 

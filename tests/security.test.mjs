@@ -5,7 +5,7 @@ import { extractCA, isValidCA, safeHttpUrl, safeImageUrl, clipText } from "../js
 import { appBase, homePath, hivePath, tokenPath, walletPath } from "../js/paths.js";
 import { batchUrl, pickBestPair } from "../js/api.js";
 import { buildHoneyScore, bandCopy } from "../js/score.js";
-import { jupiterSwapUrl, SOL_MINT, buildSwapForm } from "../js/swap.js";
+import { jupiterSwapUrl, SOL_MINT, buildSwapForm, solToSmallestUnit } from "../js/swap.js";
 import { FEE_BPS, JUPITER_REFERRAL_ACCOUNT, feeDisclosure, resolveReferralFee } from "../js/config.js";
 import {
   memoryStorage,
@@ -230,6 +230,19 @@ describe("jupiter swap link", () => {
     assert.equal(FEE_BPS, 50);
     assert.equal(buildSwapForm(BONK).referralAccount, JUPITER_REFERRAL_ACCOUNT);
     assert.equal(buildSwapForm(BONK).referralFee, 50);
+    assert.equal(buildSwapForm(BONK).initialInputMint, SOL_MINT);
+    assert.equal(buildSwapForm(BONK).initialOutputMint, BONK);
+    assert.equal(buildSwapForm(BONK).initialAmount, undefined);
+    const sell = buildSwapForm(BONK, { side: "sell", solAmount: 1 });
+    assert.equal(sell.initialInputMint, BONK);
+    assert.equal(sell.initialOutputMint, SOL_MINT);
+    assert.equal(sell.referralFee, 50);
+    assert.equal(sell.initialAmount, undefined);
+    assert.equal(buildSwapForm(BONK, { solAmount: 0.1 }).initialAmount, "100000000");
+    assert.equal(buildSwapForm(BONK, { solAmount: 0.5 }).initialAmount, "500000000");
+    assert.equal(buildSwapForm(BONK, { solAmount: 1 }).initialAmount, "1000000000");
+    assert.equal(buildSwapForm(BONK, { solAmount: 2 }).initialAmount, undefined);
+    assert.equal(solToSmallestUnit(0.5), "500000000");
     assert.equal(feeDisclosure(), "Includes a 0.5% Honeycharts fee.");
 
     const on = resolveReferralFee(BONK, 50);
