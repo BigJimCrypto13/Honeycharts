@@ -1,5 +1,5 @@
 import { extractCA, isValidCA, clipText } from "./sanitize.js";
-import { homePath, tokenPath } from "./paths.js";
+import { homePath, tokenPath, walletPath } from "./paths.js";
 import { ApiError, fetchJson, fetchSolanaFeed, fetchTokenPairs, fetchTokenDetail, fetchRugcheck } from "./api.js";
 import { buildSearchResults, dexSearchUrl, jupiterSearchUrl, normalizeSearchQuery, MIN_NAME_QUERY } from "./search.js";
 import {
@@ -12,6 +12,7 @@ import {
   IMPORT_ERRORS,
 } from "./store.js";
 import { buildHoneyScore } from "./score.js";
+import { createCreatorCache, loadCreatorHistory, resolveCreator } from "./creator-scan.js";
 import { mountSwap, jupiterSwapUrl, BUY_SOL_AMOUNTS } from "./swap.js";
 import { LAUNCH_ENABLED, brandLabel, copyrightNotice } from "./config.js";
 import { validateLaunch } from "./launch-form.js";
@@ -32,7 +33,9 @@ import {
   renderHive,
   patchTokenMarket,
   patchTokenScore,
-renderSearchResults,
+patchTokenCreator,
+  renderWallet,
+  renderSearchResults,
   renderSwapPanel,
   setHivePressed,
   updateQuotedStats,
@@ -43,6 +46,7 @@ const EXAMPLE_CA = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
 const { storage, persistent } = detectStorage();
 const hive = createHive(storage);
 const recent = createRecent(storage);
+const creatorCache = createCreatorCache(storage);
 const stats = new Map();
 
 const view = document.getElementById("view");
@@ -63,6 +67,10 @@ let lastForce = 0;
 let lastHome = null;
 let swapTicket = 0;
 const swapView = { side: "buy", solAmount: null };
+let creatorAbort = new AbortController();
+let creatorTicket = 0;
+let walletResult = null;
+const creatorState = { ca: "", view: emptyCreator() };
 const launchState = {
   cluster: "mainnet",
   step: "form",
@@ -103,6 +111,7 @@ const actions = {
   exportHive,
   importHive,
   clearRecent,
+  lookupWallet,
   patchLaunch,
   setLaunchImage,
   reviewLaunch,
@@ -175,6 +184,7 @@ function render() {
   if (route.name === "token") showToken(gen, route.ca);
   else if (route.name === "hive") showHive(gen);
   else if (route.name === "launch") showLaunch();
+  else if (route.name === "wallet") showWallet(gen, route.wallet || "", route.error || "");
   else showHome(gen, route.error || "");
 }
 
@@ -189,23 +199,37 @@ function currentRoute() {
       error: "That address is not a valid Solana contract address (base58, 32–44 characters).",
     };
   }
+  const wallet = params.get("wallet");
+  if (wallet != null && wallet !== "") {
+    const trimmed = wallet.trim();
+    if (isValidCA(trimmed)) return { name: "wallet", wallet: trimmed };
+    return {
+      name: "wallet",
+      wallet: "",
+      error: "That is not a Solana wallet address (base58, 32–44 characters).",
+    };
+  }
   if (params.get("view") === "hive") return { name: "hive" };
   if (params.get("view") === "launch") return { name: "launch" };
+  if (params.get("view") === "wallet") return { name: "wallet", wallet: "" };
   return { name: "home" };
 }
 
 function syncChrome(route) {
   const home = document.querySelector("[data-nav='home']");
   const hiveLink = document.querySelector("[data-nav='hive']");
+  const lookupLink = document.querySelector("[data-nav='lookup']");
   const launchLink = document.querySelector("[data-nav='launch']");
   setCurrent(home, route.name === "home");
   setCurrent(hiveLink, route.name === "hive");
+  setCurrent(lookupLink, route.name === "wallet");
   setCurrent(launchLink, route.name === "launch");
   const count = hive.list().length;
   hiveLink.textContent = count ? `Hive (${count})` : "Hive";
   if (route.name === "home") document.title = "Honey Charts — Solana scanner";
   if (route.name === "hive") document.title = "Hive · Honey Charts";
   if (route.name === "launch") document.title = "Launch · Honey Charts";
+  if (route.name === "wallet") document.title = "Check a wallet · Honey Charts";
   if (route.name === "token") document.title = "Token · Honey Charts";
 }
 
@@ -273,8 +297,9 @@ async function showHive(gen) {
 async function showToken(gen, ca) {
   searchInput.value = ca;
   recent.touch(ca);
-  swapView.side = "buy";
+swapView.side = "buy";
   swapView.solAmount = null;
+  resetCreator(ca);
   const cached = stats.get(ca);
   let pair = cached && cached.pair ? cached.pair : null;
   renderToken(view, tokenModel(ca, {
@@ -331,6 +356,7 @@ async function showToken(gen, ca) {
     scoreStatus: "ready",
     score: buildHoneyScore(pair, report, { reportError }),
   });
+  await loadTokenCreator(gen, ca, pair, report, reportError, false);
 }
 
 async function refreshVisibleStats(gen, force) {
@@ -431,6 +457,7 @@ async function refreshToken() {
     score: buildHoneyScore(pair, report, { reportError }),
   });
   if (!dexFailed && !reportError) setStatus("Figures refreshed.");
+  await loadTokenCreator(gen, ca, pair, report, reportError, true);
 }
 
 function setSwapSide(side) {
@@ -1017,14 +1044,211 @@ function tokenModel(ca, extra) {
     dexMessage: extra.dexMessage || "",
     scoreStatus: extra.scoreStatus,
     score: extra.score || null,
-    swapSide: swapView.side,
+swapSide: swapView.side,
     swapSol: swapView.solAmount,
+    creator: creatorState.ca === ca ? creatorState.view : emptyCreator(),
+    tokenHref: (mint) => tokenPath(location.pathname, mint),
+    walletHref: (wallet) => walletPath(location.pathname, wallet),
+    creatorHeading: "Deployer",
+    creatorListOpen: false,
     shareHref: shareHref(
       (pair && pair.baseToken && pair.baseToken.symbol) || (fallback && fallback.symbol) || "",
       (pair && pair.baseToken && pair.baseToken.name) || (fallback && fallback.name) || "",
       pageUrl,
     ),
   };
+}
+
+function emptyCreator() {
+  return {
+    status: "loading",
+    wallet: "",
+    source: "",
+    summary: null,
+    notice: "",
+    progress: "",
+    error: "",
+  };
+}
+
+function resetCreator(ca) {
+  creatorState.ca = ca;
+  creatorState.view = emptyCreator();
+}
+
+function nextCreatorSignal() {
+  creatorAbort.abort();
+  creatorAbort = new AbortController();
+  const signal = creatorAbort.signal;
+  const onPage = () => creatorAbort.abort();
+  if (aborter.signal.aborted) creatorAbort.abort();
+  else aborter.signal.addEventListener("abort", onPage, { once: true });
+  return signal;
+}
+
+async function loadTokenCreator(gen, ca, pair, report, reportError, force) {
+  const ticket = ++creatorTicket;
+  const signal = nextCreatorSignal();
+  const still = () => ticket === creatorTicket && alive(gen) && currentRoute().name === "token" && currentRoute().ca === ca;
+  const dexStatus = pair ? "ready" : "empty";
+  try {
+    const resolved = await resolveCreator(ca, report, { signal });
+    if (!still()) return;
+    if (!resolved.wallet) {
+      creatorState.view = {
+        ...emptyCreator(),
+        status: "missing",
+        error: resolved.error === "rate" ? "The public Solana RPC rate-limited the deployer lookup." : "",
+      };
+      patchTokenCreator(view, tokenModel(ca, {
+        pair,
+        dexStatus,
+        scoreStatus: "ready",
+        score: buildHoneyScore(pair, report, { reportError }),
+      }), actions);
+      return;
+    }
+    creatorState.view = {
+      ...emptyCreator(),
+      status: "loading",
+      wallet: resolved.wallet,
+      source: resolved.source,
+      progress: "Reading public Solana transactions…",
+    };
+    patchTokenCreator(view, tokenModel(ca, {
+      pair,
+      dexStatus,
+      scoreStatus: "ready",
+      score: buildHoneyScore(pair, report, { reportError }),
+    }), actions);
+    const knownPairs = new Map();
+    if (pair) knownPairs.set(ca, pair);
+    const history = await loadCreatorHistory(resolved.wallet, {
+      signal,
+      cache: creatorCache,
+      force,
+      focusMint: ca,
+      ruggedByMint: report && report.rugged === true ? { [ca]: true } : {},
+      knownPairs,
+      onProgress(text) {
+        if (!still()) return;
+        const node = view.querySelector("[data-creator-progress]");
+        if (node) node.textContent = text;
+      },
+    });
+    if (!still()) return;
+    creatorState.view = {
+      status: history.ok ? "ready" : "error",
+      wallet: resolved.wallet,
+      source: resolved.source,
+      summary: history.summary,
+      notice: history.notice,
+      progress: "",
+      error: history.error,
+    };
+    const score = buildHoneyScore(pair, report, {
+      reportError,
+      creator: history.ok ? history.summary : null,
+    });
+    patchTokenCreator(view, tokenModel(ca, { pair, dexStatus, scoreStatus: "ready", score }), actions);
+    patchTokenScore(view, { scoreStatus: "ready", score });
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (!still()) return;
+    creatorState.view = {
+      ...creatorState.view,
+      status: "error",
+      progress: "",
+      error: "The deployer lookup did not finish. Nothing new was counted.",
+    };
+    patchTokenCreator(view, tokenModel(ca, {
+      pair,
+      dexStatus,
+      scoreStatus: "ready",
+      score: buildHoneyScore(pair, report, { reportError }),
+    }), actions);
+  }
+}
+
+async function showWallet(gen, wallet, routeError, force) {
+  walletResult = walletResult && walletResult.wallet === wallet && !force ? walletResult : null;
+  renderWallet(view, walletModel(wallet, routeError), actions);
+  if (!wallet) return;
+  if (walletResult && walletResult.wallet === wallet && !force) return;
+  const ticket = ++creatorTicket;
+  const signal = nextCreatorSignal();
+  const still = () => ticket === creatorTicket && alive(gen) && currentRoute().name === "wallet" && currentRoute().wallet === wallet;
+  try {
+    const history = await loadCreatorHistory(wallet, {
+      signal,
+      cache: creatorCache,
+      force: Boolean(force),
+      onProgress(text) {
+        if (!still()) return;
+        const node = view.querySelector("[data-creator-progress]");
+        if (node) node.textContent = text;
+      },
+    });
+    if (!still()) return;
+    walletResult = history;
+    renderWallet(view, walletModel(wallet, routeError), actions);
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (!still()) return;
+    walletResult = {
+      ok: false,
+      wallet,
+      summary: null,
+      notice: "",
+      error: "The wallet lookup did not finish. Nothing was counted.",
+    };
+    renderWallet(view, walletModel(wallet, routeError), actions);
+  }
+}
+
+function walletModel(wallet, routeError) {
+  const history = walletResult && walletResult.wallet === wallet ? walletResult : null;
+  return {
+    wallet,
+    routeError: routeError || "",
+    creatorHeading: "Launch history",
+    creatorListOpen: true,
+    tokenHref: (mint) => tokenPath(location.pathname, mint),
+    walletHref: null,
+    creator: history ? {
+      status: history.ok === false ? "error" : "ready",
+      wallet,
+      source: "history",
+      summary: history.summary || null,
+      notice: history.notice || "",
+      progress: "",
+      error: history.error || "",
+    } : {
+      status: wallet ? "loading" : "ready",
+      wallet,
+      source: wallet ? "history" : "",
+      summary: null,
+      notice: "",
+      progress: wallet ? "Reading public Solana transactions…" : "",
+      error: "",
+    },
+  };
+}
+
+function lookupWallet(raw) {
+  const wallet = extractCA(typeof raw === "string" ? raw : "");
+  if (!wallet) {
+    setStatus("Paste one Solana wallet address. Base58, 32 to 44 characters.");
+    return;
+  }
+  const route = currentRoute();
+  if (route.name === "wallet" && route.wallet === wallet) {
+    showWallet(generation, wallet, "", true);
+    return;
+  }
+  walletResult = null;
+  history.pushState(null, "", walletPath(location.pathname, wallet));
+  render();
 }
 
 function fallbackFor(ca) {

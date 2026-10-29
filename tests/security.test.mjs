@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { describe, it } from "node:test";
 import { extractCA, isValidCA, safeHttpUrl, safeImageUrl, clipText } from "../js/sanitize.js";
-import { appBase, homePath, hivePath, tokenPath } from "../js/paths.js";
+import { appBase, homePath, hivePath, tokenPath, walletPath } from "../js/paths.js";
 import { batchUrl, pickBestPair } from "../js/api.js";
 import { buildHoneyScore, bandCopy } from "../js/score.js";
 import { jupiterSwapUrl, SOL_MINT, buildSwapForm, solToSmallestUnit } from "../js/swap.js";
@@ -82,6 +82,8 @@ describe("routes", () => {
     assert.equal(homePath("/"), "/");
     assert.equal(hivePath("/Honeycharts/"), "/Honeycharts/?view=hive");
     assert.equal(tokenPath("/Honeycharts/", BONK), `/Honeycharts/?ca=${BONK}`);
+    assert.equal(walletPath("/Honeycharts/", BONK), `/Honeycharts/?wallet=${BONK}`);
+    assert.equal(walletPath("/Honeycharts/"), "/Honeycharts/?view=wallet");
   });
 });
 
@@ -266,6 +268,7 @@ describe("page source", () => {
     assert.match(html, /https:\/\/api\.dexscreener\.com/);
     assert.match(html, /https:\/\/api\.rugcheck\.xyz/);
     assert.match(html, /https:\/\/api\.devnet\.solana\.com/);
+    assert.match(html, /https:\/\/solana-rpc\.publicnode\.com/);
     assert.match(html, /frame-src https:\/\/dexscreener\.com/);
     assert.match(html, /style-src-elem[^;]*'unsafe-inline'/);
     assert.doesNotMatch(html, /script-src[^;]*unsafe-inline/);

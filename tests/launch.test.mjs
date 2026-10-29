@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { LAUNCH_ENABLED, brandLabel, copyrightNotice, launchFeeConfig, LAUNCH_FEE_SOL, LAUNCH_FEE_WALLET } from "../js/config.js";
+import { readFileSync } from "node:fs";
+import { LAUNCH_ENABLED, BRAND_NAME, COPYRIGHT_OWNER, brandLabel, copyrightNotice, launchFeeConfig, LAUNCH_FEE_SOL, LAUNCH_FEE_WALLET } from "../js/config.js";
 import { describeLaunch, pumpMetadata, validateLaunch } from "../js/launch-form.js";
 import { formatLamports, hostedFileUrl, solToLamports } from "../js/launch-tx.js";
 
@@ -73,7 +74,13 @@ describe("launch form", () => {
     assert.equal(hostedFileUrl("https://litter.catbox.moe/abc123.json"), "https://litter.catbox.moe/abc123.json");
     assert.equal(hostedFileUrl("https://evil.example/abc123.json"), "");
     assert.equal(LAUNCH_ENABLED, false);
+    assert.equal(BRAND_NAME, "Honey Charts");
+    assert.equal(COPYRIGHT_OWNER, "Honey Charts LLC");
     assert.equal(brandLabel(), "Honey Charts™");
-    assert.equal(copyrightNotice(), "© 2026 Honey Charts™. All rights reserved.");
+    assert.equal(copyrightNotice(), "© 2026 Honey Charts LLC. All rights reserved.");
+    const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+    assert.match(html, /Honey Charts™/);
+    assert.match(html, /© 2026 Honey Charts LLC\. All rights reserved\./);
+    assert.doesNotMatch(html, /© 2026 Honey Charts™/);
   });
 });

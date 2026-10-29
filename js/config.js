@@ -55,17 +55,23 @@ export const LAUNCH_FEE_WALLET = "7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6";
 
 export const LAUNCH_FEE_SOL_MAX = 5;
 
-// Display name for the header and the copyright line. Swap this for the
-// owner's LLC legal name later. The trademark mark is added in the page text.
-export const COPYRIGHT_OWNER = "Honey Charts";
+// Header brand and the legal copyright line are separate. BRAND_NAME is the
+// product name in the header. COPYRIGHT_OWNER is the legal owner in the footer.
+export const BRAND_NAME = "Honey Charts";
+export const COPYRIGHT_OWNER = "Honey Charts LLC";
 export const COPYRIGHT_YEAR = 2026;
 
+// api.mainnet-beta.solana.com rejects browser origins. Creator lookups use
+// this public endpoint for read-only calls (signatures and transactions).
+// There is no API key. Nothing here signs or sends a transaction.
+export const SOLANA_READ_RPC = "https://solana-rpc.publicnode.com";
+
 export function brandLabel() {
-  return `${COPYRIGHT_OWNER}™`;
+  return `${BRAND_NAME}™`;
 }
 
 export function copyrightNotice() {
-  return `© ${COPYRIGHT_YEAR} ${COPYRIGHT_OWNER}™. All rights reserved.`;
+  return `© ${COPYRIGHT_YEAR} ${COPYRIGHT_OWNER}. All rights reserved.`;
 }
 
 export function launchFeeConfig() {
