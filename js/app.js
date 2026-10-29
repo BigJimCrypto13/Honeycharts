@@ -1,6 +1,7 @@
 import { extractCA, isValidCA, clipText } from "./sanitize.js";
 import { homePath, tokenPath } from "./paths.js";
-import { ApiError, fetchSolanaFeed, fetchTokenPairs, fetchTokenDetail, fetchRugcheck } from "./api.js";
+import { ApiError, fetchJson, fetchSolanaFeed, fetchTokenPairs, fetchTokenDetail, fetchRugcheck } from "./api.js";
+import { buildSearchResults, dexSearchUrl, jupiterSearchUrl, normalizeSearchQuery, MIN_NAME_QUERY } from "./search.js";
 import {
   detectStorage,
   createHive,
@@ -31,6 +32,7 @@ import {
   renderHive,
   patchTokenMarket,
   patchTokenScore,
+renderSearchResults,
   renderSwapPanel,
   setHivePressed,
   updateQuotedStats,
@@ -46,6 +48,11 @@ const stats = new Map();
 const view = document.getElementById("view");
 const searchForm = document.getElementById("search-form");
 const searchInput = document.getElementById("ca-input");
+const searchResultsEl = document.getElementById("search-results");
+let searchTimer = 0;
+let searchTicket = 0;
+let searchAbort = new AbortController();
+let searchState = { open: false, status: "", results: [], active: 0, query: "" };
 
 let generation = 0;
 let aborter = new AbortController();
@@ -114,6 +121,9 @@ function boot() {
   applyLaunchNav();
   normalizeHash();
   searchForm.addEventListener("submit", onSearch);
+  searchInput.addEventListener("input", onSearchInput);
+  searchInput.addEventListener("keydown", onSearchKey);
+  document.addEventListener("pointerdown", onSearchPointer);
   window.addEventListener("popstate", render);
   window.addEventListener("hashchange", () => {
     if (normalizeHash()) render();
@@ -158,6 +168,7 @@ function alive(gen) {
 
 function render() {
   const gen = begin();
+  closeSearch();
   const route = currentRoute();
   syncChrome(route);
   if (route.name !== "launch") launchState.wallet = null;
@@ -766,14 +777,159 @@ async function importHive(file, replace) {
 
 function onSearch(event) {
   event.preventDefault();
-  const ca = extractCA(searchInput.value);
-  if (!ca) {
-    setStatus("Paste one Solana contract address. Base58, 32 to 44 characters.");
+  const raw = searchInput.value;
+  const ca = extractCA(raw);
+  if (ca) {
+    openToken(ca);
     return;
   }
+  const query = normalizeSearchQuery(raw);
+  if (query.length < MIN_NAME_QUERY) {
+    setStatus("Paste one Solana contract address, or type at least 2 letters of a name or ticker.");
+    return;
+  }
+  const picked = searchState.open && searchState.query === query ? searchState.results[searchState.active] : null;
+  if (picked && isValidCA(picked.ca)) {
+    openToken(picked.ca);
+    return;
+  }
+  clearTimeout(searchTimer);
+  runSearch(query).then(() => {
+    const top = searchState.results[0];
+    if (searchState.query === query && top && isValidCA(top.ca)) openToken(top.ca);
+    else if (searchState.query === query) {
+      setStatus("No Solana token matched that name. Paste a contract address if you have one.");
+    }
+  });
+}
+
+function onSearchInput() {
+  clearTimeout(searchTimer);
+  const raw = searchInput.value;
+  if (extractCA(raw)) {
+    closeSearch();
+    return;
+  }
+  const query = normalizeSearchQuery(raw);
+  if (query.length < MIN_NAME_QUERY) {
+    closeSearch();
+    return;
+  }
+  searchState = { open: true, status: "Searching…", results: [], active: 0, query };
+  paintSearch();
+  searchTimer = setTimeout(() => runSearch(query), 280);
+}
+
+function onSearchKey(event) {
+  if (event.key === "Escape") {
+    closeSearch();
+    return;
+  }
+  if (!searchState.open || !searchState.results.length) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    searchState.active = Math.min(searchState.results.length - 1, searchState.active + 1);
+    paintSearch();
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    searchState.active = Math.max(0, searchState.active - 1);
+    paintSearch();
+  }
+}
+
+function onSearchPointer(event) {
+  if (!searchState.open) return;
+  const target = event.target;
+  if (target instanceof Node && searchForm.contains(target)) return;
+  closeSearch();
+}
+
+function openToken(ca) {
+  closeSearch();
   searchInput.value = ca;
   history.pushState(null, "", tokenPath(location.pathname, ca));
   render();
+}
+
+function closeSearch() {
+  clearTimeout(searchTimer);
+  searchTicket += 1;
+  searchAbort.abort();
+  searchAbort = new AbortController();
+  searchState = { open: false, status: "", results: [], active: 0, query: "" };
+  paintSearch();
+}
+
+function paintSearch() {
+  if (!searchResultsEl) return;
+  renderSearchResults(searchResultsEl, {
+    open: searchState.open,
+    status: searchState.status,
+    results: searchState.results,
+    active: searchState.active,
+    onPick: openToken,
+  });
+  const open = searchState.open && (searchState.status || searchState.results.length);
+  searchInput.setAttribute("aria-expanded", open ? "true" : "false");
+  if (open && searchState.results.length) {
+    searchInput.setAttribute("aria-activedescendant", `search-opt-${searchState.active}`);
+  } else {
+    searchInput.removeAttribute("aria-activedescendant");
+  }
+}
+
+async function runSearch(query) {
+  const ticket = ++searchTicket;
+  searchAbort.abort();
+  searchAbort = new AbortController();
+  const signal = searchAbort.signal;
+  const dexPromise = fetchSearch(dexSearchUrl(query), signal, 15000);
+  const jupiterPromise = fetchSearch(jupiterSearchUrl(query), signal, 60000);
+  let dexPayload = null;
+  let dexFailed = false;
+  try {
+    dexPayload = await dexPromise;
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (ticket !== searchTicket) return;
+    dexFailed = true;
+  }
+  if (ticket !== searchTicket) return;
+  const first = buildSearchResults(dexPayload, null);
+  if (first.length || dexFailed) publishSearch(query, first, dexFailed);
+  try {
+    const jupiterPayload = await jupiterPromise;
+    if (ticket !== searchTicket) return;
+    const merged = buildSearchResults(dexPayload, jupiterPayload);
+    publishSearch(query, merged, dexFailed && !merged.length);
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+    if (ticket !== searchTicket) return;
+    if (!first.length) publishSearch(query, [], dexFailed);
+  }
+}
+
+async function fetchSearch(url, signal, ttl) {
+  try {
+    return await fetchJson(url, { ttl, signal });
+  } catch (error) {
+    if (error && error.name === "AbortError" && signal && !signal.aborted) {
+      return fetchJson(url, { ttl, signal, force: true });
+    }
+    throw error;
+  }
+}
+
+function publishSearch(query, results, failed) {
+  let status = "";
+  if (!results.length && failed) {
+    status = "Name search did not load. Paste a contract address, or try again in a moment.";
+  } else if (!results.length) {
+    status = "No Solana token matched that name.";
+  }
+  const active = results.length ? Math.min(searchState.active, results.length - 1) : 0;
+  searchState = { open: true, status, results, active, query };
+  paintSearch();
 }
 
 function onLinkClick(event) {

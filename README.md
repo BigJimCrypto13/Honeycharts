@@ -6,7 +6,7 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 
 ## What you can do
 
-- Paste a Solana contract address and open a chart without leaving Honeycharts. The chart is a DexScreener embed. The header, stats, and score are Honeycharts.
+- Paste a Solana contract address, or type a name or ticker such as `bonk` or `$WIF`. A short list of Solana matches appears under the header. Rows are sorted by liquidity times 24h volume, so a deep pool with almost no trading sinks below a market people are trading. Enter or the top row opens that token. A pasted address still opens that address directly. Jupiter can mark a row Verified or Strict list. The Honey Score on the token page is unchanged.
 - Read price, 5m / 1h / 6h / 24h change, liquidity, FDV, market cap, 24h volume, buys and sells, pair age, and DEX from the deepest Solana pair.
 - Save tokens in the Hive. The list lives in `localStorage` on this browser. You can sort it, add a short note, remove a token, and export or import a JSON backup.
 - See tokens you opened under Recently viewed.
@@ -51,6 +51,8 @@ node --test
 
 ## Data the page calls
 
+- `https://api.dexscreener.com/latest/dex/search?q=<name>` (header name and ticker search, Solana pairs only)
+- `https://api.jup.ag/tokens/v2/search?query=<name>` (optional verified or strict-list marker, and a fallback when DexScreener has no Solana pair)
 - `https://api.dexscreener.com/latest/dex/tokens/<CA>`
 - `https://api.dexscreener.com/tokens/v1/solana/<addresses>` (up to 30 at a time)
 - `https://api.dexscreener.com/token-boosts/top/v1`
