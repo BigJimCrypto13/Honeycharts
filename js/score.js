@@ -1,5 +1,6 @@
 import { clipText } from "./sanitize.js";
 import { formatCompactUsd, asFinite } from "./format.js";
+import { creatorScoreFlags } from "./creator.js";
 
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 
@@ -91,9 +92,13 @@ export function buildHoneyScore(pair, report, options = {}) {
   flags.push(...market.flags);
   penalty += market.penalty;
 
+  const creator = creatorScoreFlags(options.creator);
+  if (creator.flags.length) flags.unshift(...creator.flags);
+
   let score = (incomplete ? 55 : 100) - penalty;
   if (rugged) score = Math.min(score, 8);
   if (incomplete) score = Math.min(score, 55);
+  score -= creator.penalty;
   score = clamp(score);
 
   const rugcheckIndex = !incomplete ? normalisedIndex(report.score_normalised) : null;
