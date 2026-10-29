@@ -28,7 +28,7 @@ Honeycharts will never ask for your seed phrase or private key. Swaps are handle
 - Text from DexScreener and RugCheck is written as text, not HTML.
 - External links must be `http` or `https`, and they open with `rel="noopener noreferrer"`.
 - Imported Hive files are rejected unless they match the version 1 backup shape.
-- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, PumpPortal, Pump.fun, Litterbox, and the Solana RPC hosts `api.mainnet-beta.solana.com` and `api.devnet.solana.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
+- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, PumpPortal, Pump.fun, Litterbox, and the Solana RPC hosts `api.mainnet-beta.solana.com`, `api.devnet.solana.com`, and `solana-rpc.publicnode.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
 - There are no third-party trackers.
 
 ## Run it locally
@@ -56,6 +56,7 @@ node --test
 - `https://api.dexscreener.com/token-boosts/top/v1`
 - `https://api.dexscreener.com/token-profiles/latest/v1`
 - `https://api.rugcheck.xyz/v1/tokens/<CA>/report`
+- Read-only Solana JSON-RPC at `https://solana-rpc.publicnode.com` (`getSignaturesForAddress`, `getTransaction`). `api.mainnet-beta.solana.com` rejects browser origins, so deployer lookups use the public node. No API key. The calls do not sign or send transactions.
 - Chart frame: `https://dexscreener.com/solana/<CA>?embed=1&theme=dark`
 - Swap panel, only after you press Swap: `https://plugin.jup.ag/plugin-v1.js` (Jupiter then loads its own app bundle from that host)
 
@@ -88,7 +89,28 @@ After launch, the page shows the mint, a Honeycharts chart link, Add to Hive, an
 
 `tests/devnet-launch.test.mjs` asks PumpPortal for an unsigned create transaction, appends the 0.02 SOL transfer, and checks that instruction. It does not send the transaction and does not spend SOL. Do not commit a wallet secret.
 
-The header brand and the footer line both come from `COPYRIGHT_OWNER` in `js/config.js` (currently `Honey Charts`). Change that one value to swap in the LLC legal name.
+The header brand comes from `BRAND_NAME` in `js/config.js` and reads `Honey Charts™`. The footer comes from `COPYRIGHT_OWNER` and reads `© 2026 Honey Charts LLC. All rights reserved.`
+
+## Deployer check
+
+On a token page, Honey Charts shows the deployer wallet. It uses RugCheck's `creator` field when that value is a Solana address. If the field is empty, it walks the mint's signatures on the public RPC, up to three pages, and reads the first signer of the oldest transaction it actually reaches. If that transaction is not in those pages, the page says the deployer was not found.
+
+Check a wallet (home, the Lookup nav item, or `?wallet=`) lists mints that address initialized. A mint counts when the wallet is the first signer on a transaction whose instructions include `initializeMint` or `initializeMint2`. The newest 160 transactions that mention the wallet are read. If the history is longer, the page says the scan is partial. Older launches are not counted as healthy or rugged. Pump.fun's website API is not used.
+
+Each mint is then priced from DexScreener. A coin is a loss only when a figure exists:
+
+- Price or market cap is down more than 90% from the start of a 5-minute, 1-hour, 6-hour, or 24-hour window DexScreener returned. A change of exactly -90% does not count. These windows are not an all-time peak.
+- Liquidity is under $100 and a returned volume or trade count is above zero.
+- The pair is older than 24 hours, every returned volume and trade count is zero, and liquidity is under $100 or the price is zero.
+- RugCheck set `rugged: true` on a report that loaded. That flag is only applied to the token already open.
+
+Missing prices, liquidity, and volume stay **not enough data**. They are not stored as zero and they are not losses. The ratio uses only coins that could be classified. Example: `4 of 5 coins from this wallet lost over 90%`. If some losses are liquidity or no-trading rather than a 90% drop, the line says `died or lost over 90%`. Unclassified coins are listed beside the ratio as `not enough data`.
+
+Two or more counted losses show a red **Serial Rugger** badge with that sentence. The badge does not add a claim beyond the count. The list of mints is behind "Show the launches" on a token page and open on the wallet page.
+
+The Honey Score drops after its other caps. The penalty is 12 points, plus 4 for each loss after the second, plus 10 times the share of classified coins that were losses, and it stops at 30. One loss, or a wallet with only `not enough data`, does not change the score.
+
+Results are cached in `localStorage` under `honeycharts.creator.v1` (about six hours for a full scan, shorter when the RPC rate-limits or the history was cut off). Market rows refresh about every 30 minutes. A rate limit keeps the transactions already read and says so.
 
 ## Jupiter referral fee
 

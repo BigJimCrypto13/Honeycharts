@@ -304,6 +304,39 @@ p { margin: 0; }
   border-color: var(--gold-2);
   background: rgba(240, 193, 75, 0.1);
 }
+.badge-rugger {
+  display: inline-block;
+  width: fit-content;
+  margin-top: 8px;
+  color: #fff8f6;
+  background: linear-gradient(180deg, #c53636, #7c1616);
+}
+.rugger-line {
+  margin: 8px 0 0;
+  color: #f0a8a0;
+  font-weight: 700;
+}
+.creator-line { margin: 8px 0 0; font-weight: 700; }
+.launch-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 8px;
+}
+.launch-row {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bg-elev-2);
+  border-radius: 10px;
+}
+.outcome { font-weight: 700; }
+.outcome-loss { color: #f0a8a0; }
+.outcome-alive { color: var(--up); }
+.outcome-unknown { color: var(--dim); }
+.token-creator .ca { display: block; margin-top: 8px; }
+.wallet-form { margin-top: 0; }
 
 .avatar {
   width: 40px;
@@ -601,6 +634,7 @@ details p { margin-top: 8px; color: var(--muted); }
     grid-template-areas:
       "chart head"
       "chart stats"
+      "chart creator"
       "chart swap"
       "chart score";
     align-items: start;
@@ -615,6 +649,7 @@ details p { margin-top: 8px; color: var(--muted); }
   .chart-frame { height: calc(100dvh - 168px); min-height: 560px; }
   .token-head { grid-area: head; }
   .token-stats { grid-area: stats; }
+  .token-creator { grid-area: creator; }
   .token-swap { grid-area: swap; }
   .token-score { grid-area: score; }
   .swipe-hint { display: none; }

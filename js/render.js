@@ -1,5 +1,6 @@
 import { el, clear, externalLink } from "./dom.js";
 import { safeImageUrl, safeHttpUrl, safeLinkLabel, clipText, isValidCA } from "./sanitize.js";
+import { HEURISTIC_SUMMARY } from "./creator.js";
 import {
   formatCompactUsd,
   formatPrice,
@@ -35,6 +36,14 @@ export function renderHome(root, model, actions) {
         on: { click: () => actions.refreshHome() },
       }),
     ]),
+  ]));
+  page.append(el("section", { className: "panel stack", attrs: { "data-wallet-lookup": "home" } }, [
+    el("h2", { text: "Check a wallet" }),
+    el("p", {
+      className: "muted",
+      text: "Paste a Solana address to list mints it initialized and how many of those coins later lost more than 90% of their price. The lookup is read-only.",
+    }),
+    renderWalletForm(actions, ""),
   ]));
 
   if (!model.persistent) {
@@ -72,6 +81,7 @@ export function renderToken(root, model, actions) {
   article.append(renderTokenHead(model, actions));
   article.append(renderChart(model.ca));
   article.append(renderStats(model));
+  article.append(renderCreator(model));
   article.append(renderSwap(model.ca, actions));
   article.append(renderScore(model));
   root.append(article);
@@ -86,6 +96,13 @@ export function patchTokenMarket(root, model, actions) {
   }
   head.replaceWith(renderTokenHead(model, actions));
   stats.replaceWith(renderStats(model));
+}
+
+export function patchTokenCreator(root, model, actions) {
+  const head = root.querySelector("[data-region='head']");
+  if (head) head.replaceWith(renderTokenHead(model, actions));
+  const creator = root.querySelector("[data-region='creator']");
+  if (creator) creator.replaceWith(renderCreator(model));
 }
 
 export function patchTokenScore(root, model) {
@@ -248,6 +265,19 @@ function renderTokenHead(model, actions) {
     el("h1", { className: "name", text: name || (model.dexStatus === "loading" ? "Loading token" : "Unknown token") }),
     el("p", { className: "symbol", text: symbol === "Token" ? shortCa(ca) : symbol }),
   ]);
+  const summary = model.creator && model.creator.summary;
+  if (summary && summary.serial) {
+    titles.append(el("p", {
+      className: "badge badge-rugger",
+      attrs: { "data-badge": "serial-rugger" },
+      text: "Serial Rugger",
+    }));
+    titles.append(el("p", {
+      className: "rugger-line",
+      attrs: { "data-headline": "creator" },
+      text: summary.headline,
+    }));
+  }
   top.append(titles);
   top.append(el("button", {
     className: inHive ? "ghost hive-on" : "ghost",
@@ -385,6 +415,192 @@ function stat(label, value) {
   ]);
 }
 
+export function renderWallet(root, model, actions) {
+  clear(root);
+  const page = el("div", { className: "stack", attrs: { "data-wallet-lookup": "true" } });
+  page.append(el("section", { className: "hero" }, [
+    el("h1", { text: "Check a wallet" }),
+    el("p", {
+      text: "Paste any Solana wallet. Honey Charts lists mints that wallet initialized and counts how many later died or lost more than 90%, using only figures that loaded.",
+    }),
+  ]));
+  page.append(el("section", { className: "panel" }, [
+    renderWalletForm(actions, model.wallet || ""),
+  ]));
+  if (model.routeError) page.append(el("p", { className: "banner", text: model.routeError }));
+  if (model.wallet) page.append(renderCreator(model));
+  root.append(page);
+}
+
+function renderWalletForm(actions, value) {
+  const form = el("form", {
+    className: "search wallet-form",
+    attrs: { method: "get" },
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = form.querySelector("input");
+    actions.lookupWallet(input ? input.value : "");
+  });
+  form.append(el("label", { attrs: { for: "wallet-input" }, text: "Solana wallet address" }));
+  const row = el("div", { className: "search-row" });
+  row.append(el("input", {
+    attrs: {
+      id: "wallet-input",
+      name: "wallet",
+      type: "text",
+      maxlength: "200",
+      placeholder: "Paste a wallet address",
+      autocomplete: "off",
+      autocapitalize: "off",
+      autocorrect: "off",
+      spellcheck: "false",
+      enterkeyhint: "go",
+      value: value || "",
+    },
+  }));
+  row.append(el("button", {
+    className: "primary",
+    text: "Check wallet",
+    attrs: { type: "submit" },
+  }));
+  form.append(row);
+  return form;
+}
+
+function renderCreator(model) {
+  const creator = model.creator || {
+    status: "loading",
+    wallet: "",
+    source: "",
+    summary: null,
+    notice: "",
+    progress: "",
+    error: "",
+  };
+  const section = el("section", {
+    className: "panel token-creator",
+    attrs: { "data-region": "creator", "aria-labelledby": "creator-heading" },
+  });
+  section.append(el("h2", { attrs: { id: "creator-heading" }, text: model.creatorHeading || "Deployer" }));
+  if (creator.status === "missing") {
+    section.append(el("p", {
+      text: "No deployer wallet was listed on the RugCheck report, and the mint's first signer was not in the transactions the public RPC returned.",
+    }));
+    section.append(el("p", { className: "fine", text: "not enough data" }));
+    return section;
+  }
+  if (creator.wallet) {
+    section.append(el("code", { className: "ca", attrs: { translate: "no" }, text: creator.wallet }));
+    const source = sourceLabel(creator.source);
+    if (source) section.append(el("p", { className: "fine", text: source }));
+    section.append(externalLink(
+      `https://solscan.io/account/${encodeURIComponent(creator.wallet)}`,
+      "View wallet on Solscan",
+      "text-link",
+    ));
+    if (model.walletHref && creator.wallet) {
+      section.append(el("p", {}, [
+        el("a", { attrs: { href: model.walletHref(creator.wallet) }, text: "Check this wallet" }),
+      ]));
+    }
+  } else if (creator.status === "loading") {
+    section.append(el("p", { className: "muted", text: "Checking RugCheck for the deployer, then the mint's first transaction if that field is empty." }));
+  }
+  if (creator.error) section.append(el("p", { className: "banner", text: creator.error }));
+  const summary = creator.summary;
+  if (summary && summary.serial) {
+    section.append(el("p", {
+      className: "badge badge-rugger",
+      attrs: { "data-badge": "serial-rugger" },
+      text: "Serial Rugger",
+    }));
+  }
+  if (summary) {
+    section.append(el("p", {
+      className: summary.serial ? "rugger-line" : "creator-line",
+      attrs: { "data-headline": "creator" },
+      text: summary.headline,
+    }));
+    if (summary.unknownLine) section.append(el("p", { className: "fine", text: summary.unknownLine }));
+    if (summary.rows && summary.rows.length) {
+      section.append(el("p", { className: "fine", text: countLine(summary) }));
+    }
+    if (summary.serial) {
+      section.append(el("p", {
+        className: "fine",
+        text: "The badge repeats that count. It does not add a claim beyond those figures.",
+      }));
+    }
+  }
+  if (creator.notice) section.append(el("p", { className: "banner", text: creator.notice }));
+  if (creator.status === "loading") {
+    section.append(el("p", {
+      className: "muted",
+      attrs: { "data-creator-progress": "true" },
+      text: creator.progress || "Reading public Solana transactions…",
+    }));
+  }
+  if (summary && summary.rows && summary.rows.length) {
+    const details = el("details", { attrs: model.creatorListOpen ? { open: "" } : {} });
+    details.append(el("summary", { text: "Show the launches" }));
+    details.append(renderLaunchList(summary.rows, model.tokenHref));
+    section.append(details);
+  }
+  const how = el("details");
+  how.append(el("summary", { text: "How a loss is counted" }));
+  how.append(el("p", { text: HEURISTIC_SUMMARY }));
+  how.append(el("p", {
+    text: "A mint is listed when this wallet is the first signer on a transaction that initializes it. On a token page, that token is also included when RugCheck names this wallet as its creator. The read uses a public Solana RPC. Pump.fun's website API is not used. Prices are from DexScreener. This lookup does not connect a wallet or ask you to approve a transaction.",
+  }));
+  section.append(how);
+  return section;
+}
+
+function renderLaunchList(rows, tokenHref) {
+  const shown = rows.slice(0, 40);
+  const list = el("ul", { className: "launch-list" });
+  for (const row of shown) {
+    const label = row.symbol || shortCa(row.mint);
+    const reason = row.reasons && row.reasons[0] && row.reasons[0].text
+      ? row.reasons[0].text
+      : "not enough data";
+    const item = el("li", { className: "launch-row", attrs: { "data-outcome": row.outcome || "unknown" } });
+    if (tokenHref && isValidCA(row.mint)) {
+      item.append(el("a", { attrs: { href: tokenHref(row.mint) }, text: label }));
+    } else {
+      item.append(el("span", { className: "name", text: label }));
+    }
+    if (row.symbol && isValidCA(row.mint)) {
+      item.append(el("span", { className: "fine", text: shortCa(row.mint) }));
+    }
+    item.append(el("span", { className: `outcome outcome-${row.outcome || "unknown"}`, text: outcomeLabel(row.outcome) }));
+    item.append(el("span", { className: "fine", text: reason }));
+    list.append(item);
+  }
+  if (rows.length > shown.length) {
+    list.append(el("li", { className: "fine", text: `${rows.length - shown.length} more launches were counted and are not listed here.` }));
+  }
+  return list;
+}
+
+function sourceLabel(source) {
+  if (source === "rugcheck") return "RugCheck's creator field.";
+  if (source === "first-signer") return "First signer on the mint's oldest loaded transaction.";
+  if (source === "history") return "Mints this wallet initialized as the first signer, from its recent transactions.";
+  return "";
+}
+
+function countLine(summary) {
+  return `${summary.losses} lost · ${summary.alive} with no loss signal · ${summary.unknown} not enough data`;
+}
+
+function outcomeLabel(outcome) {
+  if (outcome === "loss") return "Loss";
+  if (outcome === "alive") return "No loss signal";
+  return "not enough data";
+}
+
 function renderSwap(ca, actions) {
   const section = el("section", {
     className: "panel token-swap",
@@ -475,7 +691,7 @@ function renderScore(model) {
   section.append(el("details", {}, [
     el("summary", { text: "How this number is built" }),
     el("p", {
-      text: "When a RugCheck report loads, the score starts at 100. It subtracts points for an active mint authority (−25), an active freeze authority (−20), LP that does not look locked or burned (−20, partial −10, unclear −8), concentrated holders (up to −25), a transfer fee, thin liquidity (−20 under $5,000, −10 under $25,000), a new pair (−15 under an hour, −10 under a day, −5 under a week), and RugCheck danger flags (−8, up to 3) and warnings (−4, up to 3). The total is clamped from 0 to 100. If RugCheck marked the token rugged, the total is capped. If RugCheck did not load, the total starts at 55 and only liquidity and pair age apply.",
+      text: "When a RugCheck report loads, the score starts at 100. It subtracts points for an active mint authority (−25), an active freeze authority (−20), LP that does not look locked or burned (−20, partial −10, unclear −8), concentrated holders (up to −25), a transfer fee, thin liquidity (−20 under $5,000, −10 under $25,000), a new pair (−15 under an hour, −10 under a day, −5 under a week), and RugCheck danger flags (−8, up to 3) and warnings (−4, up to 3). The total is clamped from 0 to 100. If RugCheck marked the token rugged, the total is capped. If RugCheck did not load, the total starts at 55 and only liquidity and pair age apply. Repeat deployer losses are applied after those caps. That penalty needs at least two coins counted as losses, and only where price, liquidity, or trading figures exist. It is 12 points, plus 4 points for each loss after the second, plus 10 points times the share of checked coins that were losses, and it stops at 30.",
     }),
   ]));
   return section;

@@ -22,3 +22,9 @@ export function launchPath(pathname) {
 export function tokenPath(pathname, ca) {
   return `${appBase(pathname)}?ca=${encodeURIComponent(ca)}`;
 }
+
+export function walletPath(pathname, wallet) {
+  const base = appBase(pathname);
+  if (!wallet) return `${base}?view=wallet`;
+  return `${base}?wallet=${encodeURIComponent(wallet)}`;
+}
