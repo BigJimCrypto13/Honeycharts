@@ -15,8 +15,9 @@ import {
   asFinite,
 } from "./format.js";
 import { bandKey, meterStep } from "./score.js";
-import { jupiterSwapUrl, BUY_SOL_AMOUNTS } from "./swap.js";
+import { BUY_SOL_AMOUNTS } from "./swap.js";
 import { feeDisclosure } from "./config.js";
+import { tradeWindows, holderBarStep } from "./activity.js";
 
 const LEVEL_LABEL = { danger: "Risk", warn: "Watch", info: "Note" };
 
@@ -135,24 +136,44 @@ export function renderHome(root, model, actions) {
 export function renderToken(root, model, actions) {
   clear(root);
   const article = el("article", { className: "token-layout" });
-  article.append(renderTokenHead(model, actions));
-  article.append(renderChart(model.ca));
-  article.append(renderSwap(model.ca, model, actions));
-  article.append(renderStats(model));
-  article.append(renderCreator(model));
-  article.append(renderScore(model));
+  const mainCol = el("div", { className: "token-main" });
+  mainCol.append(renderTokenHead(model, actions));
+  mainCol.append(renderChart(model.ca));
+  mainCol.append(renderDexNotice(model));
+  mainCol.append(renderTokenPanels(model, actions));
+  const rail = el("div", { className: "token-rail" });
+  rail.append(renderSwap(model.ca, model, actions));
+  rail.append(renderStats(model));
+  article.append(mainCol);
+  article.append(rail);
+  article.append(renderTradeDock(actions));
+  article.append(el("button", {
+    className: "trade-backdrop",
+    attrs: { type: "button", "aria-label": "Close trade panel" },
+    on: { click: () => actions.closeTrade() },
+  }));
   root.append(article);
 }
 
 export function patchTokenMarket(root, model, actions) {
   const head = root.querySelector("[data-region='head']");
   const stats = root.querySelector("[data-region='stats']");
-  if (!head || !stats) {
+  const trades = root.querySelector("[data-region='trades']");
+  const notice = root.querySelector("[data-region='notice']");
+  if (!head || !stats || !trades || !notice) {
     renderToken(root, model, actions);
     return;
   }
   head.replaceWith(renderTokenHead(model, actions));
   stats.replaceWith(renderStats(model));
+  trades.replaceWith(renderTrades(model));
+  notice.replaceWith(renderDexNotice(model));
+}
+
+export function patchTokenHolders(root, model) {
+  const node = root.querySelector("[data-region='holders']");
+  if (!node) return;
+  node.replaceWith(renderHolders(model));
 }
 
 export function patchTokenCreator(root, model, actions) {
@@ -313,30 +334,37 @@ function tokenCard(item, entry, tokenHref) {
 
 function renderTokenHead(model, actions) {
   const { ca, pair, inHive } = model;
-  const symbol = pairSymbol(pair, model.fallback) || "Token";
+  const symbol = pairSymbol(pair, model.fallback);
   const name = pairName(pair, model.fallback);
-  const head = el("section", { className: "panel token-head", attrs: { "data-region": "head" } });
-  const top = el("div", { className: "token-top" });
-  top.append(tokenAvatar(imageFrom(pair), symbol));
-  const titles = el("div", { className: "token-titles" }, [
-    el("h1", { className: "name", text: name || (model.dexStatus === "loading" ? "Loading token" : "Unknown token") }),
-    el("p", { className: "symbol", text: symbol === "Token" ? shortCa(ca) : symbol }),
-  ]);
+  const known = Boolean(symbol || name);
+  const loading = !pair && model.dexStatus === "loading";
   const summary = model.creator && model.creator.summary;
-  if (summary && summary.serial) {
-    titles.append(el("p", {
-      className: "badge badge-rugger",
-      attrs: { "data-badge": "serial-rugger" },
-      text: "Serial Rugger",
-    }));
-    titles.append(el("p", {
-      className: "rugger-line",
-      attrs: { "data-headline": "creator" },
-      text: summary.headline,
-    }));
+  const head = el("section", {
+    className: "token-head",
+    attrs: { "data-region": "head", "aria-busy": !pair && loading ? "true" : "false" },
+  });
+  const identity = el("div", { className: "token-identity" });
+  if (!known && loading) {
+    identity.append(el("span", { className: "skeleton sk-avatar", attrs: { "aria-hidden": "true" } }));
+  } else {
+    identity.append(tokenAvatar(imageFrom(pair), symbol || name || ca, 56));
   }
-  top.append(titles);
-  top.append(el("button", {
+  const titles = el("div", { className: "token-titles" });
+  const tickerRow = el("div", { className: "ticker-row" });
+  if (!known && loading) {
+    tickerRow.append(el("span", { className: "skeleton sk-ticker", attrs: { "aria-hidden": "true" } }));
+    tickerRow.append(el("span", { className: "visually-hidden", text: "Loading token" }));
+  } else {
+    tickerRow.append(el("h1", { className: "name", text: symbol || name || shortCa(ca) }));
+    if (summary && summary.serial) {
+      tickerRow.append(el("p", {
+        className: "badge badge-rugger",
+        attrs: { "data-badge": "serial-rugger" },
+        text: "Serial Rugger",
+      }));
+    }
+  }
+  tickerRow.append(el("button", {
     className: inHive ? "ghost hive-on" : "ghost",
     text: inHive ? "In Hive" : "Add to Hive",
     attrs: {
@@ -346,14 +374,274 @@ function renderTokenHead(model, actions) {
     },
     on: { click: () => actions.toggleHive() },
   }));
-  head.append(top);
+  tickerRow.append(el("button", {
+    className: "ghost",
+    text: "Copy",
+    attrs: { type: "button", "aria-label": "Copy contract address" },
+    on: { click: () => actions.copyCa() },
+  }));
+  titles.append(tickerRow);
+  const sub = el("div", { className: "token-sub" });
+  if (!known && loading) {
+    sub.append(el("span", { className: "skeleton sk-name", attrs: { "aria-hidden": "true" } }));
+  } else {
+    if (name && name !== symbol) sub.append(el("span", { className: "token-name", text: name }));
+    sub.append(el("span", { className: "token-ca", attrs: { translate: "no" }, text: shortCa(ca) }));
+  }
+  titles.append(sub);
+  identity.append(titles);
+  head.append(identity);
+  head.append(renderQuote(model));
+  return head;
+}
 
-  const price = asFinite(pair && pair.priceUsd);
-  head.append(el("p", { className: "price", text: pair ? formatPrice(price) : (model.dexStatus === "loading" ? "…" : "Price unavailable") }));
-  head.append(renderChanges(pair));
+function renderQuote(model) {
+  const pair = model.pair;
+  const quote = el("div", { className: "token-quote" });
+  quote.append(el("p", { className: "mcap-kicker", text: "Market cap" }));
+  if (!pair) {
+    if (model.dexStatus === "loading") {
+      quote.append(el("p", { className: "mcap-value" }, [
+        el("span", { className: "skeleton sk-mcap", attrs: { "aria-hidden": "true" } }),
+      ]));
+      quote.append(el("p", { className: "token-change-row" }, [
+        el("span", { className: "skeleton sk-change", attrs: { "aria-hidden": "true" } }),
+      ]));
+      quote.append(el("p", { className: "token-price" }, [
+        el("span", { className: "skeleton sk-price", attrs: { "aria-hidden": "true" } }),
+      ]));
+      quote.append(el("p", { className: "visually-hidden", text: "Loading market cap" }));
+      return quote;
+    }
+    quote.append(el("p", { className: "mcap-value", text: "—" }));
+    quote.append(el("p", { className: "token-change-row" }, [
+      el("strong", { className: "flat", text: "—" }),
+      el("span", { text: "24h" }),
+    ]));
+    quote.append(el("p", { className: "token-price", text: "Price unavailable" }));
+    return quote;
+  }
+  const change = asFinite(pair.priceChange && pair.priceChange.h24);
+  quote.append(el("p", { className: "mcap-value", text: formatCompactUsd(marketCapValue(pair)) }));
+  quote.append(el("p", { className: "token-change-row" }, [
+    el("strong", { className: pctClass(change), text: formatPct(change) }),
+    el("span", { text: "24h" }),
+  ]));
+  quote.append(el("p", { className: "token-price", text: formatPrice(asFinite(pair.priceUsd)) }));
+  return quote;
+}
 
+function marketCapValue(pair) {
+  if (!pair) return null;
+  return asFinite(pair.marketCap != null ? pair.marketCap : pair.fdv);
+}
+
+function renderDexNotice(model) {
+  const notice = el("p", {
+    className: "banner",
+    attrs: { "data-region": "notice" },
+    text: model.dexMessage || "",
+  });
+  if (!model.dexMessage) notice.setAttribute("hidden", "");
+  return notice;
+}
+
+function renderTokenPanels(model, actions) {
+  const section = el("section", { className: "panel token-panels" });
+  const tab = activeTab(model);
+  const list = el("div", { className: "detail-tabs", attrs: { role: "tablist", "aria-label": "Token details" } });
+  list.append(detailTab("trades", "Trades", tab, actions));
+  list.append(detailTab("holders", "Holders", tab, actions));
+  list.append(detailTab("info", "Info", tab, actions));
+  list.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    const order = ["trades", "holders", "info"];
+    const buttons = [...list.querySelectorAll("[role='tab']")];
+    const current = buttons.findIndex((button) => button.getAttribute("aria-selected") === "true");
+    if (current < 0) return;
+    event.preventDefault();
+    const next = event.key === "ArrowRight"
+      ? (current + 1) % order.length
+      : (current - 1 + order.length) % order.length;
+    actions.setTokenTab(order[next]);
+    buttons[next].focus();
+  });
+  section.append(list);
+  section.append(renderTrades(model));
+  section.append(renderHolders(model));
+  const info = el("div", {
+    className: "detail-panel",
+    attrs: {
+      "data-panel": "info",
+      id: "token-panel-info",
+      role: "tabpanel",
+      "aria-labelledby": "token-tab-info",
+      hidden: tab === "info" ? false : "",
+    },
+  });
+  info.append(renderScore(model));
+  info.append(renderCreator(model));
+  info.append(renderTokenMeta(model, actions));
+  section.append(info);
+  return section;
+}
+
+function detailTab(id, label, current, actions) {
+  return el("button", {
+    className: "detail-tab",
+    text: label,
+    attrs: {
+      type: "button",
+      role: "tab",
+      id: `token-tab-${id}`,
+      "data-tab": id,
+      "aria-selected": current === id ? "true" : "false",
+      "aria-controls": `token-panel-${id}`,
+    },
+    on: { click: () => actions.setTokenTab(id) },
+  });
+}
+
+function activeTab(model) {
+  if (model.tokenTab === "holders" || model.tokenTab === "info") return model.tokenTab;
+  return "trades";
+}
+
+function renderTrades(model) {
+  const tab = activeTab(model);
+  const panel = el("div", {
+    className: "detail-panel",
+    attrs: {
+      "data-panel": "trades",
+      "data-region": "trades",
+      id: "token-panel-trades",
+      role: "tabpanel",
+      "aria-labelledby": "token-tab-trades",
+      hidden: tab === "trades" ? false : "",
+    },
+  });
+  const pair = model.pair;
+  panel.append(el("p", {
+    className: "fine",
+    text: "Buy and sell counts from the deepest Solana pair. This is not a list of individual fills.",
+  }));
+  if (!pair && model.dexStatus === "loading") {
+    panel.append(tradeSkeleton());
+    return panel;
+  }
+  if (!pair) {
+    panel.append(el("p", { text: model.dexMessage || "No trade counts yet. The chart may still load." }));
+    return panel;
+  }
+  const table = el("div", { className: "trade-grid", attrs: { role: "table", "aria-label": "Trade counts" } });
+  table.append(tradeHead());
+  for (const row of tradeWindows(pair)) table.append(tradeRow(row));
+  panel.append(table);
+  return panel;
+}
+
+function tradeSkeleton() {
+  const table = el("div", { className: "trade-grid", attrs: { "aria-hidden": "true" } });
+  table.append(tradeHead());
+  for (let index = 0; index < 4; index += 1) {
+    const row = el("div", { className: "trade-row" });
+    for (let cell = 0; cell < 4; cell += 1) row.append(el("span", { className: "skeleton sk-cell" }));
+    table.append(row);
+  }
+  return table;
+}
+
+function tradeHead() {
+  const line = el("div", { className: "trade-row trade-head", attrs: { role: "row" } });
+  for (const label of ["Window", "Buys", "Sells", "Volume"]) {
+    line.append(el("span", { attrs: { role: "columnheader" }, text: label }));
+  }
+  return line;
+}
+
+function tradeRow(row) {
+  const line = el("div", { className: "trade-row", attrs: { role: "row" } });
+  line.append(el("span", { attrs: { role: "rowheader" }, text: row.label }));
+  line.append(el("span", { className: "up", attrs: { role: "cell" }, text: `${formatCount(row.buys == null ? NaN : row.buys)} buys` }));
+  line.append(el("span", { className: "down", attrs: { role: "cell" }, text: `${formatCount(row.sells == null ? NaN : row.sells)} sells` }));
+  line.append(el("span", { attrs: { role: "cell" }, text: formatCompactUsd(row.volume) }));
+  return line;
+}
+
+function renderHolders(model) {
+  const tab = activeTab(model);
+  const panel = el("div", {
+    className: "detail-panel",
+    attrs: {
+      "data-panel": "holders",
+      "data-region": "holders",
+      id: "token-panel-holders",
+      role: "tabpanel",
+      "aria-labelledby": "token-tab-holders",
+      hidden: tab === "holders" ? false : "",
+    },
+  });
+  const holders = model.holders || { status: "loading", total: null, rows: [] };
+  if (holders.status === "loading") {
+    panel.append(el("p", { className: "fine", text: "Top holders from the public RugCheck report." }));
+    panel.append(el("p", { className: "visually-hidden", text: "Loading holders" }));
+    panel.append(holderSkeleton());
+    return panel;
+  }
+  const countNote = holders.total != null ? `${formatCount(holders.total)} holders reported by RugCheck. ` : "";
+  panel.append(el("p", {
+    className: "fine",
+    text: `${countNote}Top holders from the public RugCheck report. Pools and exchanges can appear in this list.`,
+  }));
+  if (!holders.rows.length) {
+    panel.append(el("p", { text: "RugCheck did not return a holder list we could read." }));
+    return panel;
+  }
+  const list = el("ol", { className: "holder-list" });
+  holders.rows.forEach((row, index) => list.append(holderRow(row, index)));
+  panel.append(list);
+  return panel;
+}
+
+function holderSkeleton() {
+  const list = el("ol", { className: "holder-list", attrs: { "aria-hidden": "true" } });
+  for (let index = 0; index < 8; index += 1) {
+    const item = el("li", { className: "holder-row" });
+    item.append(el("span", { className: "skeleton sk-rank" }));
+    item.append(el("span", { className: "skeleton sk-holder" }));
+    item.append(el("span", { className: "skeleton sk-cell" }));
+    list.append(item);
+  }
+  return list;
+}
+
+function holderRow(row, index) {
+  const id = row.owner || row.address;
+  const item = el("li", { className: "holder-row" });
+  item.append(el("span", { className: "holder-rank", text: String(index + 1) }));
+  const who = el("span", { className: "holder-who" });
+  if (id) who.append(externalLink(`https://solscan.io/account/${encodeURIComponent(id)}`, shortCa(id), "text-link"));
+  else who.append(el("span", { text: "Holder" }));
+  if (row.insider) who.append(el("span", { className: "fine", text: "Insider" }));
+  if (row.uiAmount != null) who.append(el("span", { className: "fine", text: formatCount(row.uiAmount) }));
+  item.append(who);
+  const bar = el("span", { className: "holder-bar", attrs: { "aria-hidden": "true" } });
+  bar.append(el("span", { className: `holder-fill p-${holderBarStep(row.pct)}` }));
+  item.append(bar);
+  item.append(el("span", { className: "holder-pct", text: pctPlain(row.pct) }));
+  return item;
+}
+
+function pctPlain(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${value.toFixed(2)}%`;
+}
+
+function renderTokenMeta(model, actions) {
+  const section = el("div", { className: "token-meta" });
+  section.append(el("h2", { text: "Contract" }));
   const caRow = el("div", { className: "ca-row" }, [
-    el("code", { className: "ca", attrs: { translate: "no" }, text: ca }),
+    el("code", { className: "ca", attrs: { translate: "no" }, text: model.ca }),
   ]);
   caRow.append(el("button", {
     className: "ghost",
@@ -368,31 +656,25 @@ function renderTokenHead(model, actions) {
     on: { click: () => actions.copyLink() },
   }));
   const share = safeHttpUrl(model.shareHref);
-  if (share) {
-    caRow.append(externalLink(share, "Share on X", "ghost share-link"));
-  }
+  if (share) caRow.append(externalLink(share, "Share on X", "ghost share-link"));
   caRow.append(el("button", {
     className: "ghost",
     text: "Refresh figures",
     attrs: { type: "button" },
     on: { click: () => actions.refreshToken() },
   }));
-  head.append(caRow);
-
-  if (model.dexMessage) head.append(el("p", { className: "banner", text: model.dexMessage }));
-
+  section.append(caRow);
   const explorers = el("ul", { className: "link-row" });
-  for (const [label, href] of explorerLinks(ca)) {
+  for (const [label, href] of explorerLinks(model.ca)) {
     const item = el("li");
     item.append(externalLink(href, label, "text-link"));
     explorers.append(item);
   }
-  head.append(el("div", {}, [
+  section.append(el("div", {}, [
     el("p", { className: "fine", text: "Outside links, if you want them." }),
     explorers,
   ]));
-
-  const listed = listedLinks(pair);
+  const listed = listedLinks(model.pair);
   if (listed.length) {
     const list = el("ul", { className: "link-row" });
     for (const link of listed) {
@@ -400,26 +682,29 @@ function renderTokenHead(model, actions) {
       item.append(externalLink(link.href, link.label, "text-link"));
       list.append(item);
     }
-    head.append(el("div", {}, [
+    section.append(el("div", {}, [
       el("p", { className: "fine", text: "Links listed by DexScreener. The hostname is shown so you can check it. Honeycharts does not verify them." }),
       list,
     ]));
   }
-  return head;
+  return section;
 }
 
-function renderChanges(pair) {
-  const list = el("ul", { className: "changes", attrs: { "aria-label": "Price changes" } });
-  const windows = [["5m", "m5"], ["1h", "h1"], ["6h", "h6"], ["24h", "h24"]];
-  for (const [label, key] of windows) {
-    const value = asFinite(pair && pair.priceChange && pair.priceChange[key]);
-    const item = el("li", {}, [
-      el("span", { text: label }),
-      el("strong", { className: pctClass(value), text: formatPct(value) }),
-    ]);
-    list.append(item);
-  }
-  return list;
+function renderTradeDock(actions) {
+  const dock = el("div", { className: "trade-dock", attrs: { "data-region": "trade-dock" } });
+  dock.append(el("button", {
+    className: "dock-buy",
+    text: "Buy",
+    attrs: { type: "button", "aria-controls": "trade-panel", "aria-expanded": "false" },
+    on: { click: () => actions.openTrade("buy") },
+  }));
+  dock.append(el("button", {
+    className: "dock-sell",
+    text: "Sell",
+    attrs: { type: "button", "aria-controls": "trade-panel", "aria-expanded": "false" },
+    on: { click: () => actions.openTrade("sell") },
+  }));
+  return dock;
 }
 
 function renderStats(model) {
@@ -430,7 +715,16 @@ function renderStats(model) {
   section.append(el("h2", { attrs: { id: "stats-heading" }, text: "Market" }));
   const pair = model.pair;
   if (model.dexStatus === "loading" && !pair) {
-    section.append(el("p", { className: "muted", text: "Loading market data…" }));
+    section.append(el("p", { className: "fine", text: "Figures are from the deepest Solana pair." }));
+    section.append(el("p", { className: "visually-hidden", text: "Loading market data" }));
+    const list = el("dl", { className: "stats" });
+    for (const label of ["Liquidity", "FDV", "Market cap", "24h volume", "24h trades", "Pair age", "DEX"]) {
+      list.append(el("div", {}, [
+        el("dt", { text: label }),
+        el("dd", {}, [el("span", { className: "skeleton sk-stat", attrs: { "aria-hidden": "true" } })]),
+      ]));
+    }
+    section.append(list);
     return section;
   }
   if (!pair) {
@@ -667,8 +961,17 @@ function renderSwap(ca, model, actions) {
   const solAmount = model ? model.swapSol : null;
   const section = el("section", {
     className: "panel token-swap",
-    attrs: { "data-region": "swap", "aria-labelledby": "swap-heading" },
+    attrs: { id: "trade-panel", "data-region": "swap", "aria-labelledby": "swap-heading" },
   });
+  const sheetBar = el("div", { className: "sheet-bar" });
+  sheetBar.append(el("span", { className: "sheet-grab", attrs: { "aria-hidden": "true" } }));
+  sheetBar.append(el("button", {
+    className: "ghost sheet-close",
+    text: "Close",
+    attrs: { type: "button" },
+    on: { click: () => actions.closeTrade() },
+  }));
+  section.append(sheetBar);
   section.append(el("h2", { attrs: { id: "swap-heading" }, text: "Trade" }));
   const tabs = el("div", { className: "trade-tabs", attrs: { role: "tablist", "aria-label": "Buy or sell" } });
   tabs.append(tradeTab("buy", "Buy", side, actions));
@@ -694,19 +997,25 @@ function renderSwap(ca, model, actions) {
       text: "Enter the sell amount in the Jupiter form. This page does not read your wallet, so it cannot fill a percent of your balance.",
     }));
   }
+  const feeText = feeDisclosure();
+  if (feeText) section.append(el("p", { className: "fee-note", text: feeText }));
+  section.append(el("p", { className: "muted", attrs: { "data-swap-status": "true" } }));
+  section.append(el("div", { attrs: { id: "swap-mount" } }, [
+    el("div", { className: "swap-skeleton", attrs: { "aria-hidden": "true" } }, [
+      el("span", { className: "skeleton sk-swap" }),
+      el("span", { className: "skeleton sk-swap" }),
+      el("span", { className: "skeleton sk-swap short" }),
+    ]),
+  ]));
+  section.append(el("div", { attrs: { "data-swap-fallback": "true" } }));
   section.append(el("p", {
     className: "disclaimer",
     text: "Swaps are executed by Jupiter. Honeycharts is not a broker or custodian. Meme coins are high risk. Not financial advice, DYOR.",
   }));
-  const feeText = feeDisclosure();
-  if (feeText) section.append(el("p", { className: "fee-note", text: feeText }));
   section.append(el("p", {
     className: "fine",
     text: "Connect Phantom, Solflare, or another wallet in Jupiter's picker. Approval stays in that wallet. Honeycharts never sees your keys.",
   }));
-  section.append(el("p", { className: "muted", attrs: { "data-swap-status": "true" } }));
-  section.append(el("div", { attrs: { id: "swap-mount" } }));
-  section.append(el("div", { attrs: { "data-swap-fallback": "true" } }));
   return section;
 }
 
@@ -736,7 +1045,12 @@ function renderScore(model) {
     text: "Not financial advice, DYOR. This score only restates public data. It can be missing, stale, or wrong. A higher number does not mean a token is safe.",
   }));
   if (model.scoreStatus !== "ready" || !model.score) {
-    section.append(el("p", { className: "muted", text: "Checking the public RugCheck report…" }));
+    section.append(el("p", { className: "visually-hidden", text: "Checking the public RugCheck report…" }));
+    section.append(el("div", { className: "score-skeleton", attrs: { "aria-hidden": "true" } }, [
+      el("span", { className: "skeleton sk-score" }),
+      el("span", { className: "skeleton sk-line" }),
+      el("span", { className: "skeleton sk-line short" }),
+    ]));
     return section;
   }
   const score = model.score;
@@ -783,6 +1097,7 @@ function renderScore(model) {
 function renderChart(ca) {
   const section = el("section", { className: "chart-card", attrs: { "aria-label": "Chart" } });
   section.append(el("h2", { className: "visually-hidden", text: "Chart" }));
+  section.append(el("div", { className: "chart-skeleton skeleton", attrs: { "aria-hidden": "true" } }));
   section.append(el("iframe", {
     className: "chart-frame",
     attrs: {
