@@ -12,8 +12,8 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 - See tokens you opened under Recently viewed.
 - Read a Honey Score from 0 to 100. It restates public RugCheck and DexScreener flags. It is not a safety rating and it is not financial advice.
 - Browse Solana tokens from DexScreener's boosted list and latest profiles. Boosted rows are labeled as paid promotion.
-- Share a token with `?ca=` (older `#ca` links still open). Copy the address, copy the link, or open an X post draft.
-- Buy or sell from the token page. The Jupiter form is open next to the chart (under the chart on a phone), with Buy (SOL to the token) and Sell (token to SOL) tabs. Buy has 0.1, 0.5, and 1 SOL shortcuts. Sell amount stays in Jupiter's form. Wallet connect and signing stay inside Jupiter. The form includes a 0.5% Honeycharts fee (`referralAccount` and `referralFee` of 50 bps).
+- Share a token with `?ca=` (`?t=` is an alias, and older `#ca` links still open). Copy the address, copy the link, or open an X post draft.
+- Buy or sell from the token page. On a wide screen the Jupiter form sits in a sticky column to the right of the chart, with Buy (SOL to the token) and Sell (token to SOL) tabs, then the pair stats. Buy has 0.1, 0.5, and 1 SOL shortcuts. Sell amount stays in Jupiter's form. On a phone, a Buy/Sell bar stays at the bottom and opens that same form as a sheet. Wallet connect and signing stay inside Jupiter. The form includes a 0.5% Honeycharts fee (`referralAccount` and `referralFee` of 50 bps). Under the chart, Trades, Holders, and Info tabs keep the pair counts, the RugCheck holder list, the Honey Score, and the Serial Rugger check.
 - Launch a Pump.fun bonding-curve token from the Launch tab. It is mainnet only, tradable immediately, and asks for one signature after a confirmation checkbox. The review screen says `Includes 0.02 SOL Honeycharts launch fee`.
 
 ## Security promise

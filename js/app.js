@@ -1,5 +1,6 @@
 import { extractCA, isValidCA, clipText } from "./sanitize.js";
-import { homePath, tokenPath, walletPath } from "./paths.js";
+import { homePath, tokenPath, walletPath, routeFromSearch } from "./paths.js";
+import { readHolderList } from "./activity.js";
 import { ApiError, fetchJson, fetchSolanaFeed, fetchTokenPairs, fetchTokenDetail, fetchRugcheck } from "./api.js";
 import { buildSearchResults, dexSearchUrl, jupiterSearchUrl, normalizeSearchQuery, MIN_NAME_QUERY } from "./search.js";
 import {
@@ -33,7 +34,8 @@ import {
   renderHive,
   patchTokenMarket,
   patchTokenScore,
-patchTokenCreator,
+  patchTokenCreator,
+  patchTokenHolders,
   renderWallet,
   renderSearchResults,
   renderSwapPanel,
@@ -67,6 +69,8 @@ let lastForce = 0;
 let lastHome = null;
 let swapTicket = 0;
 const swapView = { side: "buy", solAmount: null };
+let tokenTab = "trades";
+const holderState = { ca: "", status: "loading", total: null, rows: [] };
 let creatorAbort = new AbortController();
 let creatorTicket = 0;
 let walletResult = null;
@@ -104,6 +108,9 @@ const actions = {
   refreshToken,
   setSwapSide,
   setSwapSol,
+  setTokenTab,
+  openTrade,
+  closeTrade,
   sortHive,
   setNote,
   removeHive,
@@ -137,6 +144,9 @@ function boot() {
   window.addEventListener("hashchange", () => {
     if (normalizeHash()) render();
   });
+  window.addEventListener("resize", onResize);
+  window.addEventListener("keydown", onEscape);
+  watchHeader();
   document.addEventListener("click", onLinkClick);
   document.addEventListener("keydown", onSlash);
   document.addEventListener("visibilitychange", () => {
@@ -179,6 +189,8 @@ function render() {
   const gen = begin();
   closeSearch();
   const route = currentRoute();
+  document.body.classList.toggle("is-token", route.name === "token");
+  if (route.name !== "token") document.body.classList.remove("trade-open");
   syncChrome(route);
   if (route.name !== "launch") launchState.wallet = null;
   if (route.name === "token") showToken(gen, route.ca);
@@ -186,33 +198,11 @@ function render() {
   else if (route.name === "launch") showLaunch();
   else if (route.name === "wallet") showWallet(gen, route.wallet || "", route.error || "");
   else showHome(gen, route.error || "");
+  syncTradeSheet();
 }
 
 function currentRoute() {
-  const params = new URLSearchParams(location.search);
-  const ca = params.get("ca");
-  if (ca != null && ca !== "") {
-    const trimmed = ca.trim();
-    if (isValidCA(trimmed)) return { name: "token", ca: trimmed };
-    return {
-      name: "home",
-      error: "That address is not a valid Solana contract address (base58, 32–44 characters).",
-    };
-  }
-  const wallet = params.get("wallet");
-  if (wallet != null && wallet !== "") {
-    const trimmed = wallet.trim();
-    if (isValidCA(trimmed)) return { name: "wallet", wallet: trimmed };
-    return {
-      name: "wallet",
-      wallet: "",
-      error: "That is not a Solana wallet address (base58, 32–44 characters).",
-    };
-  }
-  if (params.get("view") === "hive") return { name: "hive" };
-  if (params.get("view") === "launch") return { name: "launch" };
-  if (params.get("view") === "wallet") return { name: "wallet", wallet: "" };
-  return { name: "home" };
+  return routeFromSearch(location.search);
 }
 
 function syncChrome(route) {
@@ -297,9 +287,11 @@ async function showHive(gen) {
 async function showToken(gen, ca) {
   searchInput.value = ca;
   recent.touch(ca);
-swapView.side = "buy";
+  swapView.side = "buy";
   swapView.solAmount = null;
+  tokenTab = "trades";
   resetCreator(ca);
+  resetHolders(ca);
   const cached = stats.get(ca);
   let pair = cached && cached.pair ? cached.pair : null;
   renderToken(view, tokenModel(ca, {
@@ -352,10 +344,10 @@ swapView.side = "buy";
         : "network";
   }
   if (!alive(gen)) return;
-  patchTokenScore(view, {
-    scoreStatus: "ready",
-    score: buildHoneyScore(pair, report, { reportError }),
-  });
+  const score = buildHoneyScore(pair, report, { reportError });
+  applyHolders(ca, report);
+  patchTokenScore(view, { scoreStatus: "ready", score });
+  patchTokenHolders(view, tokenModel(ca, { pair, dexStatus: pair ? "ready" : "empty", scoreStatus: "ready", score }));
   await loadTokenCreator(gen, ca, pair, report, reportError, false);
 }
 
@@ -452,10 +444,10 @@ async function refreshToken() {
     reportError = error instanceof ApiError && error.code === "rate" ? "rate" : "network";
   }
   if (!alive(gen)) return;
-  patchTokenScore(view, {
-    scoreStatus: "ready",
-    score: buildHoneyScore(pair, report, { reportError }),
-  });
+  const score = buildHoneyScore(pair, report, { reportError });
+  applyHolders(ca, report);
+  patchTokenScore(view, { scoreStatus: "ready", score });
+  patchTokenHolders(view, tokenModel(ca, { pair, dexStatus: pair ? "ready" : "empty", scoreStatus: "ready", score }));
   if (!dexFailed && !reportError) setStatus("Figures refreshed.");
   await loadTokenCreator(gen, ca, pair, report, reportError, true);
 }
@@ -478,11 +470,58 @@ function setSwapSol(sol) {
   restartSwap(route.ca);
 }
 
+function setTokenTab(tab) {
+  if (tab !== "trades" && tab !== "holders" && tab !== "info") return;
+  if (currentRoute().name !== "token") return;
+  tokenTab = tab;
+  const panels = view.querySelector(".token-panels");
+  if (!panels) return;
+  panels.querySelectorAll("[role='tab']").forEach((button) => {
+    const on = button.getAttribute("data-tab") === tab;
+    button.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  panels.querySelectorAll("[data-panel]").forEach((panel) => {
+    if (panel.getAttribute("data-panel") === tab) panel.removeAttribute("hidden");
+    else panel.setAttribute("hidden", "");
+  });
+}
+
+function openTrade(side) {
+  if ((side === "buy" || side === "sell") && swapView.side !== side) setSwapSide(side);
+  if (!window.matchMedia("(max-width: 1023px)").matches) return;
+  document.body.classList.add("trade-open");
+  syncTradeSheet();
+  const closeBtn = view.querySelector(".sheet-close");
+  if (closeBtn) closeBtn.focus();
+}
+
+function closeTrade() {
+  const wasOpen = document.body.classList.contains("trade-open");
+  document.body.classList.remove("trade-open");
+  syncTradeSheet();
+  if (!wasOpen) return;
+  const dock = view.querySelector(".dock-buy");
+  if (dock && window.matchMedia("(max-width: 1023px)").matches) dock.focus();
+}
+
+function syncTradeSheet() {
+  const sheet = view.querySelector("[data-region='swap']");
+  if (!sheet) return;
+  const mobile = window.matchMedia("(max-width: 1023px)").matches;
+  const open = document.body.classList.contains("trade-open");
+  if (mobile && !open) sheet.setAttribute("inert", "");
+  else sheet.removeAttribute("inert");
+  view.querySelectorAll(".trade-dock button").forEach((button) => {
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+}
+
 function restartSwap(ca) {
   const node = view.querySelector("[data-region='swap']");
   if (!node) return;
   node.replaceWith(renderSwapPanel(ca, tokenModel(ca, {}), actions));
   loadSwap(generation, ca);
+  syncTradeSheet();
 }
 
 async function loadSwap(gen, ca) {
@@ -490,7 +529,7 @@ async function loadSwap(gen, ca) {
   const status = view.querySelector("[data-swap-status]");
   const fallback = view.querySelector("[data-swap-fallback]");
   if (fallback) while (fallback.firstChild) fallback.removeChild(fallback.firstChild);
-  if (status) status.textContent = "Loading Jupiter…";
+  if (status) status.textContent = "";
   try {
     await mountSwap(ca, { side: swapView.side, solAmount: swapView.solAmount });
     if (ticket !== swapTicket || !alive(gen) || currentRoute().ca !== ca) return;
@@ -850,6 +889,7 @@ function onSearchInput() {
 function onSearchKey(event) {
   if (event.key === "Escape") {
     closeSearch();
+    event.stopPropagation();
     return;
   }
   if (!searchState.open || !searchState.results.length) return;
@@ -1034,6 +1074,9 @@ function hiveModel(extra = {}) {
 function tokenModel(ca, extra) {
   const pair = extra.pair || null;
   const fallback = fallbackFor(ca);
+  const holders = holderState.ca === ca
+    ? { status: holderState.status, total: holderState.total, rows: holderState.rows }
+    : { status: "loading", total: null, rows: [] };
   const pageUrl = new URL(tokenPath(location.pathname, ca), location.origin).href;
   return {
     ca,
@@ -1044,8 +1087,10 @@ function tokenModel(ca, extra) {
     dexMessage: extra.dexMessage || "",
     scoreStatus: extra.scoreStatus,
     score: extra.score || null,
-swapSide: swapView.side,
+    swapSide: swapView.side,
     swapSol: swapView.solAmount,
+    tokenTab,
+    holders,
     creator: creatorState.ca === ca ? creatorState.view : emptyCreator(),
     tokenHref: (mint) => tokenPath(location.pathname, mint),
     walletHref: (wallet) => walletPath(location.pathname, wallet),
@@ -1074,6 +1119,47 @@ function emptyCreator() {
 function resetCreator(ca) {
   creatorState.ca = ca;
   creatorState.view = emptyCreator();
+}
+
+function resetHolders(ca) {
+  holderState.ca = ca;
+  holderState.status = "loading";
+  holderState.total = null;
+  holderState.rows = [];
+}
+
+function applyHolders(ca, report) {
+  const parsed = readHolderList(report);
+  holderState.ca = ca;
+  holderState.status = report ? "ready" : "empty";
+  holderState.total = parsed.total;
+  holderState.rows = parsed.rows;
+}
+
+function watchHeader() {
+  const header = document.querySelector(".site-header");
+  if (!header) return;
+  const apply = () => {
+    const height = Math.ceil(header.getBoundingClientRect().height);
+    document.documentElement.style.setProperty("--header-h", `${height}px`);
+  };
+  apply();
+  if (typeof ResizeObserver === "function") new ResizeObserver(apply).observe(header);
+  else window.addEventListener("resize", apply);
+}
+
+function onResize() {
+  if (!window.matchMedia("(max-width: 1023px)").matches) {
+    document.body.classList.remove("trade-open");
+  }
+  syncTradeSheet();
+}
+
+function onEscape(event) {
+  if (event.key !== "Escape") return;
+  if (!document.body.classList.contains("trade-open")) return;
+  event.preventDefault();
+  closeTrade();
 }
 
 function nextCreatorSignal() {
