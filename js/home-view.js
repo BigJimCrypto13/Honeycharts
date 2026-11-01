@@ -72,7 +72,7 @@ function renderOnboard(actions) {
   const copy = el("div", { className: "onboard-copy" });
   copy.append(el("p", {
     className: "onboard-tag",
-    text: "Honey Charts: live Solana meme coin charts, rug checks, and trading in one hive",
+    text: "Honey Charts. Where the buzz starts. Join the hive.",
   }));
   const steps = el("ol", { className: "onboard-steps" });
   for (const step of [

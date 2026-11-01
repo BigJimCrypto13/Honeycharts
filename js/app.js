@@ -278,7 +278,7 @@ function syncChrome(route) {
   setCurrent(launchLink, route.name === "launch");
   const count = hive.list().length;
   hiveLink.textContent = count ? `Hive (${count})` : "Hive";
-  if (route.name === "home") document.title = "Honey Charts — Solana scanner";
+  if (route.name === "home") document.title = "Honey Charts | Where the buzz starts";
   if (route.name === "hive") document.title = "Hive · Honey Charts";
   if (route.name === "launch") document.title = "Launch · Honey Charts";
   if (route.name === "wallet") document.title = "Check a wallet · Honey Charts";

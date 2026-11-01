@@ -197,7 +197,11 @@ describe("quick buy and welcome", () => {
   it("keeps the intro copy and the coming-soon card in the home view", () => {
     const home = readFileSync(new URL("../js/home-view.js", import.meta.url), "utf8");
     const render = readFileSync(new URL("../js/render.js", import.meta.url), "utf8");
-    assert.match(home, /Honey Charts: live Solana meme coin charts, rug checks, and trading in one hive/);
+    assert.match(home, /Honey Charts\. Where the buzz starts\. Join the hive\./);
+    const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+    assert.match(html, /<title>Honey Charts \| Where the buzz starts<\/title>/);
+    assert.match(html, /name="description" content="Honey Charts\. Where the buzz starts\. Join the hive\."/);
+    assert.match(html, /property="og:description" content="Honey Charts\. Where the buzz starts\. Join the hive\."/);
     assert.match(home, /Search or pick a trending coin/);
     assert.match(home, /Check its Honey Score and rug flags/);
     assert.match(home, /Connect your own wallet and trade \(we never see your keys\)/);
