@@ -374,6 +374,25 @@ export function cleanNote(note) {
   return note.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, 280);
 }
 
+export const WELCOME_KEY = "honeycharts.welcome.v1";
+
+export function readWelcomeDismissed(storage) {
+  try {
+    return Boolean(storage && storage.getItem(WELCOME_KEY) === "1");
+  } catch {
+    return false;
+  }
+}
+
+export function dismissWelcome(storage) {
+  try {
+    if (storage) storage.setItem(WELCOME_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function cleanLabel(value, max) {
   if (typeof value !== "string") return "";
   return value.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, max);

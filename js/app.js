@@ -1,7 +1,19 @@
 import { extractCA, isValidCA, clipText } from "./sanitize.js";
-import { homePath, tokenPath, walletPath, routeFromSearch } from "./paths.js";
+import { formatPct, formatPrice, pctClass } from "./format.js";
+import { homePath, tokenPath, tokenTradePath, walletPath, routeFromSearch } from "./paths.js";
 import { readHolderList } from "./activity.js";
-import { ApiError, fetchJson, fetchSolanaFeed, fetchTokenPairs, fetchTokenDetail, fetchRugcheck } from "./api.js";
+import {
+  ApiError,
+  fetchJson,
+  fetchSolanaFeed,
+  fetchTokenPairs,
+  fetchTokenDetail,
+  fetchRugcheck,
+  fetchGeckoPools,
+  fetchJupiterBoard,
+  geckoTokenInfoUrl,
+  geckoTokenPoolsUrl,
+} from "./api.js";
 import { buildSearchResults, dexSearchUrl, jupiterSearchUrl, normalizeSearchQuery, MIN_NAME_QUERY } from "./search.js";
 import {
   detectStorage,
@@ -11,10 +23,12 @@ import {
   exportBackup,
   applyImport,
   IMPORT_ERRORS,
+  readWelcomeDismissed,
+  dismissWelcome,
 } from "./store.js";
 import { buildHoneyScore } from "./score.js";
 import { createCreatorCache, loadCreatorHistory, resolveCreator } from "./creator-scan.js";
-import { mountSwap, jupiterSwapUrl, BUY_SOL_AMOUNTS } from "./swap.js";
+import { mountSwap, jupiterSwapUrl, BUY_SOL_AMOUNTS, lamportsFromSol, lamportsFromUsd } from "./swap.js";
 import { LAUNCH_ENABLED, brandLabel, copyrightNotice } from "./config.js";
 import { validateLaunch } from "./launch-form.js";
 import { renderLaunch } from "./launch-ui.js";
@@ -29,21 +43,37 @@ import {
 import { connectLaunchWallet, listLaunchWallets } from "./wallet.js";
 import { el, clear, externalLink } from "./dom.js";
 import {
-  renderHome,
   renderToken,
   renderHive,
   patchTokenMarket,
   patchTokenScore,
   patchTokenCreator,
   patchTokenHolders,
+  patchTokenAbout,
+  patchTrendRail,
   renderWallet,
   renderSearchResults,
   renderSwapPanel,
   setHivePressed,
   updateQuotedStats,
 } from "./render.js";
-
-const EXAMPLE_CA = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
+import { renderHome } from "./home-view.js";
+import {
+  BTC_MINT,
+  ETH_MINT,
+  SOL_MINT,
+  applyDexMap,
+  buildTokenAbout,
+  ensureHiveRows,
+  mergeCoinRows,
+  parseGeckoPools,
+  parseJupiterTokens,
+  pickGeckoPool,
+  pickJupiterToken,
+  readMajors,
+  selectTable,
+  withRank,
+} from "./board.js";
 
 const { storage, persistent } = detectStorage();
 const hive = createHive(storage);
@@ -66,9 +96,27 @@ let hiveTimer = 0;
 let homeTimer = 0;
 let hiveSort = { key: "added", dir: "desc" };
 let lastForce = 0;
-let lastHome = null;
 let swapTicket = 0;
-const swapView = { side: "buy", solAmount: null };
+const swapView = { side: "buy", solAmount: null, lamports: null };
+const boardUi = {
+  filter: "trending",
+  windowId: "h24",
+  sortKey: "default",
+  sortDir: "desc",
+  quickBuy: 0.1,
+  mobileTab: "trending",
+  railOpen: true,
+};
+let boardRows = [];
+let boardBoosts = { items: [], total: 0, error: "" };
+let boardError = "";
+let boardLoading = true;
+let boardPromise = null;
+let boardAt = 0;
+let majors = { sol: null, btc: null, eth: null };
+let welcomeDismissed = readWelcomeDismissed(storage);
+let aboutState = { ca: "", about: null };
+let aboutWindow = "h24";
 let tokenTab = "trades";
 const holderState = { ca: "", status: "loading", total: null, rows: [] };
 let creatorAbort = new AbortController();
@@ -102,6 +150,17 @@ const launchState = {
 
 const actions = {
   refreshHome,
+  dismissWelcome: hideWelcome,
+  setBoardFilter,
+  setBoardWindow,
+  setBoardSort,
+  setQuickBuy,
+  setMobileTab,
+  toggleHiveCa,
+  toggleTrendRail,
+  setAboutWindow,
+  applySwapAmount,
+  setSwapUsd,
   toggleHive,
   copyCa,
   copyLink,
@@ -157,6 +216,8 @@ function boot() {
     hive.clearReset();
   }
   render();
+  refreshMajors();
+  setInterval(refreshMajors, 30000);
 }
 
 function applyBrand() {
@@ -190,6 +251,7 @@ function render() {
   closeSearch();
   const route = currentRoute();
   document.body.classList.toggle("is-token", route.name === "token");
+  document.body.classList.toggle("is-home", route.name === "home");
   if (route.name !== "token") document.body.classList.remove("trade-open");
   syncChrome(route);
   if (route.name !== "launch") launchState.wallet = null;
@@ -216,7 +278,7 @@ function syncChrome(route) {
   setCurrent(launchLink, route.name === "launch");
   const count = hive.list().length;
   hiveLink.textContent = count ? `Hive (${count})` : "Hive";
-  if (route.name === "home") document.title = "Honey Charts — Solana scanner";
+  if (route.name === "home") document.title = "Honey Charts | Where the buzz starts";
   if (route.name === "hive") document.title = "Hive · Honey Charts";
   if (route.name === "launch") document.title = "Launch · Honey Charts";
   if (route.name === "wallet") document.title = "Check a wallet · Honey Charts";
@@ -230,47 +292,29 @@ function setCurrent(node, on) {
 }
 
 async function showHome(gen, routeError) {
-  const emptyFeeds = {
-    loading: true,
-    error: routeError,
-    boosts: { items: [], total: 0, error: "" },
-    profiles: { items: [], total: 0, error: "" },
-  };
-  renderHome(view, homeModel(emptyFeeds), actions);
+  if (routeError) boardError = routeError;
+  renderHome(view, homeModel(), actions);
   try {
-    const [boostResult, profileResult] = await Promise.allSettled([
-      fetchSolanaFeed("boosts", { signal: aborter.signal }),
-      fetchSolanaFeed("profiles", { signal: aborter.signal }),
-    ]);
-    if (!alive(gen) || abortedResult(boostResult) || abortedResult(profileResult)) return;
-    const boosts = feedValue(boostResult, "The boosted list did not load.");
-    const profiles = feedValue(profileResult, "Latest profiles did not load.");
-    const seen = new Set(boosts.items.map((item) => item.ca));
-    profiles.items = profiles.items.filter((item) => !seen.has(item.ca));
-    let error = routeError;
-    if (boostResult.status === "rejected" && profileResult.status === "rejected") {
-      error = error || feedErrorMessage(boostResult.reason);
-    }
-    const cas = [
-      ...boosts.items.map((item) => item.ca),
-      ...profiles.items.map((item) => item.ca),
-      ...recent.list().map((item) => item.ca),
-    ];
-    const fetched = await fetchTokenPairs(cas, { signal: aborter.signal });
+    await ensureBoard(gen, { force: boardRows.length === 0 });
     if (!alive(gen)) return;
-    mergeStats(fetched);
-    renderHome(view, homeModel({ loading: false, error, boosts, profiles }), actions);
-    homeTimer = setInterval(() => refreshVisibleStats(gen, false), 90000);
+    renderHome(view, homeModel(), actions);
+    paintMajors();
   } catch (error) {
     if (error && error.name === "AbortError") return;
     if (!alive(gen)) return;
-    renderHome(view, homeModel({
-      loading: false,
-      error: routeError || feedErrorMessage(error),
-      boosts: { items: [], total: 0, error: "" },
-      profiles: { items: [], total: 0, error: "" },
-    }), actions);
+    if (!boardRows.length) boardError = routeError || feedErrorMessage(error);
+    boardLoading = false;
+    renderHome(view, homeModel(), actions);
   }
+  homeTimer = setInterval(() => {
+    ensureBoard(gen, { force: true }).then(() => {
+      if (!alive(gen) || currentRoute().name !== "home") return;
+      renderHome(view, homeModel(), actions);
+      paintMajors();
+    }).catch((error) => {
+      if (error && error.name === "AbortError") return;
+    });
+  }, 20000);
 }
 
 function feedValue(result, message) {
@@ -288,8 +332,14 @@ async function showToken(gen, ca) {
   searchInput.value = ca;
   recent.touch(ca);
   swapView.side = "buy";
-  swapView.solAmount = null;
+  swapView.lamports = null;
+  const buy = Number(new URLSearchParams(location.search).get("buy"));
+  swapView.solAmount = BUY_SOL_AMOUNTS.includes(buy) ? buy : null;
   tokenTab = "trades";
+  if (aboutState.ca !== ca) {
+    aboutState = { ca, about: null };
+    aboutWindow = "h24";
+  }
   resetCreator(ca);
   resetHolders(ca);
   const cached = stats.get(ca);
@@ -301,6 +351,13 @@ async function showToken(gen, ca) {
     score: null,
   }), actions);
   loadSwap(gen, ca);
+  loadTokenAbout(gen, ca);
+  if (!boardRows.length) {
+    ensureBoard(gen, { force: false }).then(() => {
+      if (!alive(gen) || currentRoute().name !== "token" || currentRoute().ca !== ca) return;
+      patchTrendRail(view, tokenModel(ca, { pair, dexStatus: pair ? "ready" : "loading", scoreStatus: "loading", score: null }), actions);
+    }).catch(() => {});
+  }
   if (pair) applyTitle(pair);
 
   try {
@@ -309,13 +366,15 @@ async function showToken(gen, ca) {
     stats.set(ca, { pair, error: null });
     rememberPair(ca, pair);
     if (pair) applyTitle(pair);
-    patchTokenMarket(view, tokenModel(ca, {
+    const market = tokenModel(ca, {
       pair,
       dexStatus: pair ? "ready" : "empty",
       dexMessage: pair ? "" : "DexScreener has no Solana pair where this address is the base token. The chart may still load.",
       scoreStatus: "loading",
       score: null,
-    }), actions);
+    });
+    patchTokenMarket(view, market, actions);
+    if (aboutState.ca === ca && aboutState.about) patchTokenAbout(view, market, actions);
   } catch (error) {
     if (error && error.name === "AbortError") return;
     if (!alive(gen)) return;
@@ -355,6 +414,7 @@ async function refreshVisibleStats(gen, force) {
   if (!alive(gen)) return;
   const route = currentRoute();
   if (route.name === "token") return;
+  if (route.name === "home") return;
   const cas = collectVisibleCas(route.name);
   if (!cas.length) return;
   try {
@@ -458,7 +518,10 @@ function setSwapSide(side) {
   if (side !== "buy" && side !== "sell") return;
   if (swapView.side === side) return;
   swapView.side = side;
-  if (side !== "buy") swapView.solAmount = null;
+  if (side !== "buy") {
+    swapView.solAmount = null;
+    swapView.lamports = null;
+  }
   restartSwap(route.ca);
 }
 
@@ -467,7 +530,56 @@ function setSwapSol(sol) {
   if (route.name !== "token" || swapView.side !== "buy") return;
   if (!BUY_SOL_AMOUNTS.includes(sol) || swapView.solAmount === sol) return;
   swapView.solAmount = sol;
+  swapView.lamports = null;
   restartSwap(route.ca);
+}
+
+function setSwapUsd(usd) {
+  const route = currentRoute();
+  if (route.name !== "token" || swapView.side !== "buy") return;
+  const price = majors.sol && majors.sol.price;
+  const lamports = lamportsFromUsd(usd, price);
+  if (!lamports) {
+    setStatus("SOL price has not loaded, so a dollar amount cannot be converted yet.");
+    return;
+  }
+  swapView.solAmount = null;
+  swapView.lamports = lamports;
+  restartSwap(route.ca);
+}
+
+function applySwapAmount() {
+  const route = currentRoute();
+  if (route.name !== "token") return;
+  if (swapView.side === "sell") {
+    focusSwap();
+    return;
+  }
+  const input = view.querySelector("[data-swap-amount]");
+  const raw = input && typeof input.value === "string" ? input.value.trim() : "";
+  const sol = Number(raw);
+  let nextSol = null;
+  let nextLamports = null;
+  if (BUY_SOL_AMOUNTS.includes(sol)) nextSol = sol;
+  else {
+    nextLamports = lamportsFromSol(raw);
+    if (!nextLamports) {
+      setStatus("Enter a buy from just above 0 to 100 SOL. Nothing is signed on this page.");
+      return;
+    }
+  }
+  const same = swapView.solAmount === nextSol && swapView.lamports === nextLamports;
+  swapView.solAmount = nextSol;
+  swapView.lamports = nextLamports;
+  if (!same) restartSwap(route.ca);
+  focusSwap();
+}
+
+function focusSwap() {
+  const mount = document.getElementById("swap-mount");
+  if (!mount) return;
+  mount.setAttribute("tabindex", "-1");
+  mount.focus();
 }
 
 function setTokenTab(tab) {
@@ -531,7 +643,11 @@ async function loadSwap(gen, ca) {
   if (fallback) while (fallback.firstChild) fallback.removeChild(fallback.firstChild);
   if (status) status.textContent = "";
   try {
-    await mountSwap(ca, { side: swapView.side, solAmount: swapView.solAmount });
+    await mountSwap(ca, {
+      side: swapView.side,
+      solAmount: swapView.solAmount,
+      lamports: swapView.lamports,
+    });
     if (ticket !== swapTicket || !alive(gen) || currentRoute().ca !== ca) return;
     const latest = view.querySelector("[data-swap-status]");
     if (latest) latest.textContent = "";
@@ -737,6 +853,7 @@ function undoButton(token) {
           syncChrome(currentRoute());
           setStatus("Restored to Hive.");
           if (currentRoute().name === "hive") renderHive(view, hiveModel(), actions);
+          if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
         } catch (error) {
           setStatus(IMPORT_ERRORS[error.message] || "Couldn't restore that token.");
         }
@@ -769,7 +886,7 @@ function clearRecent() {
   setStatus("Cleared recently viewed.");
   const route = currentRoute();
   if (route.name === "hive") renderHive(view, hiveModel(), actions);
-  if (route.name === "home" && lastHome) renderHome(view, homeModel({ ...lastHome, loading: false }), actions);
+  if (route.name === "home") renderHome(view, homeModel(), actions);
 }
 
 async function copyCa() {
@@ -1042,20 +1159,265 @@ function normalizeHash() {
   return true;
 }
 
-function homeModel(partial) {
-  const model = {
-    loading: Boolean(partial.loading),
-    error: partial.error || "",
-    boosts: partial.boosts || { items: [], total: 0, error: "" },
-    profiles: partial.profiles || { items: [], total: 0, error: "" },
-    stats,
-    recent: recent.list(),
-    persistent,
-    exampleHref: tokenPath(location.pathname, EXAMPLE_CA),
-    tokenHref: (ca) => tokenPath(location.pathname, ca),
+function hideWelcome() {
+  welcomeDismissed = true;
+  dismissWelcome(storage);
+  if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+  const next = view.querySelector("[data-board-filters] button");
+  if (next) next.focus();
+}
+
+function setBoardFilter(filter) {
+  if (!["trending", "held", "new", "graduated", "hive"].includes(filter)) return;
+  boardUi.filter = filter;
+  boardUi.sortKey = "default";
+  if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+}
+
+function setBoardWindow(windowId) {
+  if (!["m5", "h1", "h6", "h24"].includes(windowId)) return;
+  boardUi.windowId = windowId;
+  if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+}
+
+function setBoardSort(key) {
+  if (!["mcap", "change", "volume", "liq", "age"].includes(key)) return;
+  if (boardUi.sortKey === key) boardUi.sortDir = boardUi.sortDir === "asc" ? "desc" : "asc";
+  else {
+    boardUi.sortKey = key;
+    boardUi.sortDir = key === "age" ? "desc" : "desc";
+  }
+  if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+}
+
+function setQuickBuy(sol) {
+  if (!BUY_SOL_AMOUNTS.includes(sol)) return;
+  boardUi.quickBuy = sol;
+  if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+}
+
+function setMobileTab(tab) {
+  if (!["trending", "new", "trades"].includes(tab)) return;
+  boardUi.mobileTab = tab;
+  if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+}
+
+function toggleTrendRail() {
+  boardUi.railOpen = !boardUi.railOpen;
+  const route = currentRoute();
+  if (route.name !== "token") return;
+  patchTrendRail(view, tokenModel(route.ca, currentTokenExtra(route.ca)), actions);
+}
+
+function setAboutWindow(windowId) {
+  if (!["m5", "h1", "h6", "h24"].includes(windowId)) return;
+  aboutWindow = windowId;
+  const route = currentRoute();
+  if (route.name !== "token") return;
+  patchTokenAbout(view, tokenModel(route.ca, currentTokenExtra(route.ca)), actions);
+}
+
+function toggleHiveCa(ca) {
+  if (!isValidCA(ca)) return;
+  if (hive.has(ca)) {
+    const removed = hive.get(ca);
+    hive.remove(ca);
+    setStatus("Removed from Hive.", undoButton(removed));
+  } else {
+    const row = boardRows.find((item) => item.ca === ca);
+    try {
+      hive.add(ca, row && row.name, row && row.symbol);
+      setStatus("Saved in this browser's Hive.");
+    } catch (error) {
+      setStatus(IMPORT_ERRORS[error.message] || "Couldn't add that token.");
+      return;
+    }
+  }
+  syncChrome(currentRoute());
+  const route = currentRoute();
+  if (route.name === "home") renderHome(view, homeModel(), actions);
+  if (route.name === "token") setHivePressed(view, hive.has(route.ca));
+}
+
+function currentTokenExtra(ca) {
+  const cached = stats.get(ca);
+  const pair = cached && cached.pair ? cached.pair : null;
+  return {
+    pair,
+    dexStatus: pair ? "ready" : "empty",
+    scoreStatus: "ready",
+    score: null,
   };
-  lastHome = model;
-  return model;
+}
+
+function railTrending() {
+  return selectTable(boardRows, {
+    filter: "trending",
+    windowId: "h24",
+    sortKey: "default",
+    hiveOrder: [],
+    limit: 18,
+  });
+}
+
+async function ensureBoard(gen, options = {}) {
+  if (boardPromise) return boardPromise;
+  if (!options.force && boardRows.length && Date.now() - boardAt < 18000) return boardRows;
+  const run = loadBoard(gen).finally(() => {
+    boardPromise = null;
+  });
+  boardPromise = run;
+  return run;
+}
+
+async function loadBoard(gen) {
+  const signal = aborter.signal;
+  const [gtTrend, gtNew, jupTrend, jupTrade, jupRecent, boostResult] = await Promise.allSettled([
+    fetchGeckoPools("trending", { signal }),
+    fetchGeckoPools("new", { signal }),
+    fetchJupiterBoard("trending", { signal }),
+    fetchJupiterBoard("traded", { signal }),
+    fetchJupiterBoard("recent", { signal }),
+    fetchSolanaFeed("boosts", { signal }),
+  ]);
+  if (!alive(gen)) return boardRows;
+  if ([gtTrend, gtNew, jupTrend, jupTrade, jupRecent].every(abortedResult)) return boardRows;
+  const groups = [
+    withRank(settledRows(gtTrend, parseGeckoPools), "trendingRank", 0),
+    withRank(settledRows(jupTrend, parseJupiterTokens), "trendingRank", 1000),
+    withRank(settledRows(gtNew, parseGeckoPools), "newRank", 0),
+    withRank(settledRows(jupRecent, parseJupiterTokens), "newRank", 1000),
+    settledRows(jupTrade, parseJupiterTokens),
+  ];
+  let rows = mergeCoinRows(groups);
+  const failed = [gtTrend, gtNew, jupTrend, jupTrade, jupRecent].filter((result) => result.status === "rejected" && !abortedResult(result));
+  if (!rows.length && failed.length) {
+    boardError = feedErrorMessage(failed[0].reason);
+    boardLoading = false;
+    return boardRows;
+  }
+  const mints = dexMints(rows);
+  let fetched = new Map();
+  try {
+    fetched = await fetchTokenPairs(mints, { signal });
+  } catch (error) {
+    if (error && error.name === "AbortError") throw error;
+  }
+  if (!alive(gen)) return boardRows;
+  rows = applyDexMap(rows, fetched);
+  rows = ensureHiveRows(rows, hive.list(), fetched);
+  mergeStats(fetched);
+  const nextMajors = readMajors(fetched);
+  if (nextMajors.sol || nextMajors.btc || nextMajors.eth) majors = nextMajors;
+  boardRows = rows;
+  boardBoosts = feedValue(boostResult, "The boosted list did not load.");
+  boardError = "";
+  boardLoading = false;
+  boardAt = Date.now();
+  return boardRows;
+}
+
+function settledRows(result, parse) {
+  if (!result || result.status !== "fulfilled") return [];
+  try {
+    return parse(result.value);
+  } catch {
+    return [];
+  }
+}
+
+function dexMints(rows) {
+  const out = [];
+  const seen = new Set();
+  const push = (ca) => {
+    if (!isValidCA(ca) || seen.has(ca)) return;
+    seen.add(ca);
+    out.push(ca);
+  };
+  for (const row of rows) push(row.ca);
+  for (const token of hive.list()) push(token.ca);
+  push(SOL_MINT);
+  push(BTC_MINT);
+  push(ETH_MINT);
+  return out.slice(0, 90);
+}
+
+async function refreshMajors() {
+  try {
+    const fetched = await fetchTokenPairs([SOL_MINT, BTC_MINT, ETH_MINT]);
+    const next = readMajors(fetched);
+    if (!next.sol && !next.btc && !next.eth) return;
+    majors = next;
+    paintMajors();
+  } catch {
+    // The status bar keeps the last prices.
+  }
+}
+
+function paintMajors() {
+  const bar = document.querySelector("[data-market-bar]");
+  if (!bar) return;
+  paintMajor(bar, "sol", "SOL", majors.sol);
+  paintMajor(bar, "btc", "BTC", majors.btc);
+  paintMajor(bar, "eth", "ETH", majors.eth);
+}
+
+function paintMajor(bar, key, label, quote) {
+  const node = bar.querySelector(`[data-px='${key}']`);
+  if (!node) return;
+  node.classList.remove("up", "down", "flat");
+  if (!quote || quote.price == null) {
+    node.textContent = `${label} —`;
+    return;
+  }
+  const change = quote.change == null ? "" : ` ${formatPct(quote.change)}`;
+  node.textContent = `${label} ${formatPrice(quote.price)}${change}`;
+  node.classList.add(pctClass(quote.change));
+}
+
+async function loadTokenAbout(gen, ca) {
+  const signal = aborter.signal;
+  try {
+    const [infoResult, poolResult, jupResult] = await Promise.allSettled([
+      fetchJson(geckoTokenInfoUrl(ca), { ttl: 120000, signal }),
+      fetchJson(geckoTokenPoolsUrl(ca), { ttl: 20000, signal }),
+      fetchJson(jupiterSearchUrl(ca), { ttl: 20000, signal }),
+    ]);
+    if (!alive(gen) || currentRoute().name !== "token" || currentRoute().ca !== ca) return;
+    if ([infoResult, poolResult, jupResult].every(abortedResult)) return;
+    const pair = stats.get(ca) && stats.get(ca).pair;
+    const about = buildTokenAbout({
+      geckoInfo: infoResult.status === "fulfilled" ? infoResult.value : null,
+      geckoPool: poolResult.status === "fulfilled" ? pickGeckoPool(poolResult.value) : null,
+      jupiterToken: jupResult.status === "fulfilled" ? pickJupiterToken(jupResult.value, ca) : null,
+      pair: pair || null,
+    });
+    aboutState = { ca, about };
+    patchTokenAbout(view, tokenModel(ca, currentTokenExtra(ca)), actions);
+  } catch (error) {
+    if (error && error.name === "AbortError") return;
+  }
+}
+
+function homeModel() {
+  return {
+    loading: boardLoading && boardRows.length === 0,
+    error: boardRows.length ? "" : boardError,
+    persistent,
+    welcome: !welcomeDismissed,
+    filter: boardUi.filter,
+    windowId: boardUi.windowId,
+    sortKey: boardUi.sortKey,
+    sortDir: boardUi.sortDir,
+    quickBuy: boardUi.quickBuy,
+    mobileTab: boardUi.mobileTab,
+    rows: boardRows,
+    hiveOrder: hive.list().map((token) => token.ca),
+    inHive: (ca) => hive.has(ca),
+    boosts: boardBoosts,
+    tokenHref: (ca) => tokenPath(location.pathname, ca),
+    tradeHref: (ca) => tokenTradePath(location.pathname, ca, boardUi.quickBuy),
+  };
 }
 
 function hiveModel(extra = {}) {
@@ -1089,7 +1451,13 @@ function tokenModel(ca, extra) {
     score: extra.score || null,
     swapSide: swapView.side,
     swapSol: swapView.solAmount,
+    swapLamports: swapView.lamports,
+    solPrice: majors.sol && majors.sol.price,
     tokenTab,
+    trending: railTrending(),
+    railOpen: boardUi.railOpen,
+    about: aboutState.ca === ca ? aboutState.about : null,
+    aboutWindow,
     holders,
     creator: creatorState.ca === ca ? creatorState.view : emptyCreator(),
     tokenHref: (mint) => tokenPath(location.pathname, mint),

@@ -25,6 +25,13 @@ export function tokenPath(pathname, ca) {
   return `${appBase(pathname)}?ca=${encodeURIComponent(ca)}`;
 }
 
+// Opens the token page with a Jupiter buy amount filled in. The page does not sign.
+export function tokenTradePath(pathname, ca, sol) {
+  const path = tokenPath(pathname, ca);
+  if (sol !== 0.1 && sol !== 0.5 && sol !== 1) return path;
+  return `${path}&buy=${sol}`;
+}
+
 export function walletPath(pathname, wallet) {
   const base = appBase(pathname);
   if (!wallet) return `${base}?view=wallet`;

@@ -2,7 +2,13 @@
 
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const BASE58_FIND = /[1-9A-HJ-NP-Za-km-z]{32,44}/g;
-const IMAGE_HOSTS = new Set(["cdn.dexscreener.com", "dd.dexscreener.com"]);
+const IMAGE_HOSTS = new Set([
+  "cdn.dexscreener.com",
+  "dd.dexscreener.com",
+  "assets.geckoterminal.com",
+  "coin-images.coingecko.com",
+  "arweave.net",
+]);
 const IMAGE_ID_RE = /^[A-Za-z0-9_-]{8,80}$/;
 
 export function isValidCA(value) {
