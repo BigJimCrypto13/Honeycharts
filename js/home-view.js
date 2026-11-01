@@ -48,6 +48,7 @@ export function renderHome(root, model, actions) {
 function buildHome(model, actions, signature) {
   const page = el("div", { className: "home-board", attrs: { "data-board-root": "true", "data-sig": signature } });
   if (model.welcome) page.append(renderOnboard(actions));
+  else page.append(renderIntroReplay(actions));
   if (!model.persistent) {
     page.append(el("p", {
       className: "banner slim-banner",
@@ -88,13 +89,29 @@ function renderOnboard(actions) {
     text: "Add coins to your Hive to watch them on this browser.",
   }));
   box.append(copy);
-  box.append(el("button", {
+  const side = el("div", { className: "onboard-actions" });
+  side.append(introWatchButton(actions));
+  side.append(el("button", {
     className: "ghost onboard-dismiss",
     text: "Dismiss",
     attrs: { type: "button", "aria-label": "Dismiss introduction" },
     on: { click: () => actions.dismissWelcome() },
   }));
+  box.append(side);
   return box;
+}
+
+function renderIntroReplay(actions) {
+  return el("p", { className: "intro-replay" }, [introWatchButton(actions)]);
+}
+
+function introWatchButton(actions) {
+  return el("button", {
+    className: "intro-watch",
+    text: "Watch intro",
+    attrs: { type: "button" },
+    on: { click: () => actions.watchIntro() },
+  });
 }
 
 function renderChips(model) {

@@ -393,6 +393,25 @@ export function dismissWelcome(storage) {
   }
 }
 
+export const INTRO_KEY = "honeycharts.intro.v1";
+
+export function readIntroSeen(storage) {
+  try {
+    return Boolean(storage && storage.getItem(INTRO_KEY) === "1");
+  } catch {
+    return false;
+  }
+}
+
+export function markIntroSeen(storage) {
+  try {
+    if (storage) storage.setItem(INTRO_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function cleanLabel(value, max) {
   if (typeof value !== "string") return "";
   return value.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, max);

@@ -25,6 +25,8 @@ import {
   IMPORT_ERRORS,
   readWelcomeDismissed,
   dismissWelcome,
+  readIntroSeen,
+  markIntroSeen,
 } from "./store.js";
 import { buildHoneyScore } from "./score.js";
 import { createCreatorCache, loadCreatorHistory, resolveCreator } from "./creator-scan.js";
@@ -58,6 +60,7 @@ import {
   updateQuotedStats,
 } from "./render.js";
 import { renderHome } from "./home-view.js";
+import { mountIntroOverlay, prefersReducedMotion, shouldShowIntro } from "./intro.js";
 import {
   BTC_MINT,
   ETH_MINT,
@@ -115,6 +118,8 @@ let boardPromise = null;
 let boardAt = 0;
 let majors = { sol: null, btc: null, eth: null };
 let welcomeDismissed = readWelcomeDismissed(storage);
+let introSeen = readIntroSeen(storage);
+let introHandle = null;
 let aboutState = { ca: "", about: null };
 let aboutWindow = "h24";
 let tokenTab = "trades";
@@ -151,6 +156,7 @@ const launchState = {
 const actions = {
   refreshHome,
   dismissWelcome: hideWelcome,
+  watchIntro,
   setBoardFilter,
   setBoardWindow,
   setBoardSort,
@@ -261,6 +267,7 @@ function render() {
   else if (route.name === "wallet") showWallet(gen, route.wallet || "", route.error || "");
   else showHome(gen, route.error || "");
   syncTradeSheet();
+  syncIntro();
 }
 
 function currentRoute() {
@@ -1159,6 +1166,34 @@ function normalizeHash() {
   return true;
 }
 
+function watchIntro() {
+  if (currentRoute().name !== "home") return;
+  if (introHandle && introHandle.isOpen()) return;
+  openIntro();
+}
+
+function syncIntro() {
+  if (currentRoute().name !== "home") {
+    if (introHandle && introHandle.isOpen()) introHandle.dismiss();
+    return;
+  }
+  if (introHandle && introHandle.isOpen()) return;
+  if (shouldShowIntro("home", introSeen, false)) openIntro();
+}
+
+function openIntro() {
+  introHandle = mountIntroOverlay({
+    reducedMotion: prefersReducedMotion(),
+    onClose(remember) {
+      introHandle = null;
+      if (remember) {
+        introSeen = true;
+        markIntroSeen(storage);
+      }
+    },
+  });
+}
+
 function hideWelcome() {
   welcomeDismissed = true;
   dismissWelcome(storage);
@@ -1525,6 +1560,11 @@ function onResize() {
 
 function onEscape(event) {
   if (event.key !== "Escape") return;
+  if (introHandle && introHandle.isOpen()) {
+    event.preventDefault();
+    introHandle.finish();
+    return;
+  }
   if (!document.body.classList.contains("trade-open")) return;
   event.preventDefault();
   closeTrade();
