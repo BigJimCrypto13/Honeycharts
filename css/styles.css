@@ -1116,7 +1116,83 @@ body.is-home main { padding-top: 8px; padding-bottom: 12px; }
   font-weight: 800;
 }
 .onboard-hint { margin: 1px 0 0; color: var(--dim); font-size: 0.72rem; }
-.onboard-dismiss { grid-column: 2; grid-row: 1 / span 3; min-height: 32px; padding: 4px 10px; }
+.onboard-actions {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.onboard-dismiss { min-height: 32px; padding: 4px 10px; }
+.intro-watch {
+  min-height: 32px;
+  padding: 2px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.intro-replay { margin: 0 0 6px; }
+.intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #070605;
+  opacity: 1;
+  transition: opacity 480ms ease;
+}
+.intro-overlay.is-leaving { opacity: 0; pointer-events: none; }
+.intro-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #070605;
+}
+.intro-ui {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  height: 100%;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.15) 42%, rgba(0, 0, 0, 0.28) 100%);
+}
+.intro-tagline {
+  margin: 0 auto;
+  max-width: 18ch;
+  text-align: center;
+  font-size: clamp(1.35rem, 4vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85);
+}
+.intro-captions {
+  margin: 0 auto;
+  max-width: 36rem;
+  min-height: 1.4em;
+  text-align: center;
+  font-size: 1rem;
+  line-height: 1.35;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+}
+.intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.intro-sound, .intro-play { min-width: min(100%, 220px); }
+.intro-play[hidden], .intro-tagline[hidden] { display: none; }
+.intro-skip, .intro-enter { min-height: 44px; }
+body.intro-open { overflow: hidden; }
 
 .chip-strip {
   display: flex;
