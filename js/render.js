@@ -15,9 +15,10 @@ import {
   asFinite,
 } from "./format.js";
 import { bandKey, meterStep } from "./score.js";
-import { BUY_SOL_AMOUNTS } from "./swap.js";
+import { BUY_SOL_AMOUNTS, BUY_USD_PRESETS, lamportsFromUsd } from "./swap.js";
 import { feeDisclosure } from "./config.js";
 import { tradeWindows, holderBarStep } from "./activity.js";
+import { BOARD_WINDOWS, splitStep, xSearchUrl } from "./board.js";
 
 const LEVEL_LABEL = { danger: "Risk", warn: "Watch", info: "Note" };
 
@@ -77,72 +78,21 @@ function searchMeta(row) {
   return parts.join(" · ");
 }
 
-export function renderHome(root, model, actions) {
-  clear(root);
-  const page = el("div", { className: "stack" });
-  page.append(el("section", { className: "hero" }, [
-    el("h1", { text: "Chart a Solana token without leaving the hive" }),
-    el("p", {
-      text: "Paste a contract address. The chart stays on Honeycharts, with price, liquidity, and a plain-language Honey Score.",
-    }),
-    el("div", { className: "hero-actions" }, [
-      el("a", { className: "button", attrs: { href: model.exampleHref }, text: "Try BONK" }),
-      el("button", {
-        className: "ghost",
-        text: "Refresh lists",
-        attrs: { type: "button" },
-        on: { click: () => actions.refreshHome() },
-      }),
-    ]),
-  ]));
-  page.append(el("section", { className: "panel stack", attrs: { "data-wallet-lookup": "home" } }, [
-    el("h2", { text: "Check a wallet" }),
-    el("p", {
-      className: "muted",
-      text: "Paste a Solana address to list mints it initialized and how many of those coins later lost more than 90% of their price. The lookup is read-only.",
-    }),
-    renderWalletForm(actions, ""),
-  ]));
-
-  if (!model.persistent) {
-    page.append(el("p", {
-      className: "banner",
-      text: "This browser is not saving the Hive. It will clear when you reload.",
-    }));
-  }
-  if (model.error) page.append(el("p", { className: "banner", text: model.error }));
-  if (model.recent.length) {
-    page.append(renderRecent("home", model.recent, model.stats, model.tokenHref, actions));
-  }
-  page.append(renderFeed(
-    "Boosted on DexScreener",
-    "Paid DexScreener promotions. Not a Honeycharts ranking, and not an endorsement.",
-    model.boosts,
-    model.stats,
-    model.tokenHref,
-    model.loading,
-  ));
-  page.append(renderFeed(
-    "Latest profiles",
-    "Recently updated DexScreener profiles on Solana. A profile is not a review.",
-    model.profiles,
-    model.stats,
-    model.tokenHref,
-    model.loading,
-  ));
-  root.append(page);
-}
-
 export function renderToken(root, model, actions) {
   clear(root);
-  const article = el("article", { className: "token-layout" });
+  const article = el("article", {
+    className: model.railOpen === false ? "token-layout rail-collapsed" : "token-layout",
+  });
+  article.append(renderTrendRail(model, actions));
   const mainCol = el("div", { className: "token-main" });
   mainCol.append(renderTokenHead(model, actions));
+  mainCol.append(renderStatPills(model));
   mainCol.append(renderChart(model.ca));
   mainCol.append(renderDexNotice(model));
   mainCol.append(renderTokenPanels(model, actions));
   const rail = el("div", { className: "token-rail" });
   rail.append(renderSwap(model.ca, model, actions));
+  rail.append(renderAbout(model, actions));
   rail.append(renderStats(model));
   article.append(mainCol);
   article.append(rail);
@@ -157,17 +107,34 @@ export function renderToken(root, model, actions) {
 
 export function patchTokenMarket(root, model, actions) {
   const head = root.querySelector("[data-region='head']");
+  const pills = root.querySelector("[data-region='pills']");
   const stats = root.querySelector("[data-region='stats']");
   const trades = root.querySelector("[data-region='trades']");
   const notice = root.querySelector("[data-region='notice']");
-  if (!head || !stats || !trades || !notice) {
+  if (!head || !pills || !stats || !trades || !notice) {
     renderToken(root, model, actions);
     return;
   }
   head.replaceWith(renderTokenHead(model, actions));
+  pills.replaceWith(renderStatPills(model));
   stats.replaceWith(renderStats(model));
   trades.replaceWith(renderTrades(model));
   notice.replaceWith(renderDexNotice(model));
+}
+
+export function patchTokenAbout(root, model, actions) {
+  const node = root.querySelector("[data-region='about']");
+  if (!node) return;
+  node.replaceWith(renderAbout(model, actions));
+}
+
+export function patchTrendRail(root, model, actions) {
+  const node = root.querySelector("[data-region='trend-rail']");
+  if (!node) return;
+  const open = model.railOpen !== false;
+  const article = node.closest(".token-layout");
+  if (article) article.classList.toggle("rail-collapsed", !open);
+  node.replaceWith(renderTrendRail(model, actions));
 }
 
 export function patchTokenHolders(root, model) {
@@ -261,77 +228,6 @@ export function updateQuotedStats(root, stats) {
   });
 }
 
-function renderFeed(title, subtitle, feed, stats, tokenHref, loading) {
-  const section = el("section", { className: "stack" });
-  section.append(el("div", { className: "section-head" }, [
-    el("h2", { text: title }),
-    el("p", { className: "muted", text: subtitle }),
-  ]));
-  if (feed.error) section.append(el("p", { className: "banner", text: feed.error }));
-  if (feed.error && !feed.items.length) return section;
-  if (!feed.items.length && loading) {
-    section.append(el("p", { className: "muted", text: "Loading this list…" }));
-    return section;
-  }
-  if (!feed.items.length) {
-    section.append(el("p", { className: "muted", text: "DexScreener returned no Solana tokens for this list." }));
-    return section;
-  }
-  const grid = el("div", { className: "cards" });
-  for (const item of feed.items) grid.append(tokenCard(item, stats.get(item.ca), tokenHref));
-  section.append(grid);
-  if (feed.total > feed.items.length) {
-    section.append(el("p", {
-      className: "fine",
-      text: `Showing ${feed.items.length} of ${feed.total} Solana tokens from this DexScreener feed.`,
-    }));
-  }
-  return section;
-}
-
-function tokenCard(item, entry, tokenHref) {
-  const pair = entry && entry.pair;
-  const symbol = pairSymbol(pair, null);
-  const name = pairName(pair, null);
-  const link = el("a", {
-    className: "token-card",
-    attrs: { href: tokenHref(item.ca), "data-ca": item.ca },
-  });
-  link.append(tokenAvatar(imageFrom(pair) || item.icon, symbol || item.ca));
-  const body = el("span", { className: "card-body" });
-  body.append(el("span", { className: "card-title" }, [
-    el("span", { className: "name", text: name || symbol || "Unknown token" }),
-    el("span", {
-      className: item.boosted ? "badge badge-paid" : "badge",
-      text: item.boosted ? "Boosted · paid" : "Profile",
-    }),
-  ]));
-  body.append(el("span", { className: "symbol", text: symbol || shortCa(item.ca) }));
-  body.append(el("span", {
-    className: "card-price",
-    attrs: { "data-stat": "price" },
-    text: priceText(entry),
-  }));
-  const change = changeValue(entry);
-  body.append(el("span", {
-    className: `stat-change ${pctClass(change)}`,
-    attrs: { "data-stat": "change" },
-    text: entry ? formatPct(change) : "…",
-  }));
-  body.append(el("span", { className: "card-meta" }, [
-    "Liq ",
-    el("span", { attrs: { "data-stat": "liq" }, text: entry ? money(entry, "liquidity") : "…" }),
-    " · MCap ",
-    el("span", { attrs: { "data-stat": "mcap" }, text: mcapText(entry) }),
-  ]));
-  if (item.boosted && item.amount != null) {
-    body.append(el("span", { className: "fine", text: `DexScreener boost total: ${formatCount(item.amount)}` }));
-  }
-  if (item.description) body.append(el("span", { className: "fine", text: item.description }));
-  link.append(body);
-  return link;
-}
-
 function renderTokenHead(model, actions) {
   const { ca, pair, inHive } = model;
   const symbol = pairSymbol(pair, model.fallback);
@@ -391,49 +287,174 @@ function renderTokenHead(model, actions) {
   titles.append(sub);
   identity.append(titles);
   head.append(identity);
-  head.append(renderQuote(model));
   return head;
-}
-
-function renderQuote(model) {
-  const pair = model.pair;
-  const quote = el("div", { className: "token-quote" });
-  quote.append(el("p", { className: "mcap-kicker", text: "Market cap" }));
-  if (!pair) {
-    if (model.dexStatus === "loading") {
-      quote.append(el("p", { className: "mcap-value" }, [
-        el("span", { className: "skeleton sk-mcap", attrs: { "aria-hidden": "true" } }),
-      ]));
-      quote.append(el("p", { className: "token-change-row" }, [
-        el("span", { className: "skeleton sk-change", attrs: { "aria-hidden": "true" } }),
-      ]));
-      quote.append(el("p", { className: "token-price" }, [
-        el("span", { className: "skeleton sk-price", attrs: { "aria-hidden": "true" } }),
-      ]));
-      quote.append(el("p", { className: "visually-hidden", text: "Loading market cap" }));
-      return quote;
-    }
-    quote.append(el("p", { className: "mcap-value", text: "—" }));
-    quote.append(el("p", { className: "token-change-row" }, [
-      el("strong", { className: "flat", text: "—" }),
-      el("span", { text: "24h" }),
-    ]));
-    quote.append(el("p", { className: "token-price", text: "Price unavailable" }));
-    return quote;
-  }
-  const change = asFinite(pair.priceChange && pair.priceChange.h24);
-  quote.append(el("p", { className: "mcap-value", text: formatCompactUsd(marketCapValue(pair)) }));
-  quote.append(el("p", { className: "token-change-row" }, [
-    el("strong", { className: pctClass(change), text: formatPct(change) }),
-    el("span", { text: "24h" }),
-  ]));
-  quote.append(el("p", { className: "token-price", text: formatPrice(asFinite(pair.priceUsd)) }));
-  return quote;
 }
 
 function marketCapValue(pair) {
   if (!pair) return null;
   return asFinite(pair.marketCap != null ? pair.marketCap : pair.fdv);
+}
+
+function renderStatPills(model) {
+  const row = el("div", {
+    className: "stat-pills",
+    attrs: { "data-region": "pills", "aria-label": "Market stats" },
+  });
+  const pair = model.pair;
+  const loading = !pair && model.dexStatus === "loading";
+  const change = pair ? asFinite(pair.priceChange && pair.priceChange.h24) : null;
+  row.append(statPill("Market cap", loading ? null : formatCompactUsd(marketCapValue(pair)), loading));
+  row.append(statPill("Price", loading ? null : formatPrice(asFinite(pair && pair.priceUsd)), loading));
+  const changePill = statPill("24h", loading ? null : formatPct(change), loading);
+  if (!loading) {
+    const strong = changePill.querySelector("strong");
+    if (strong) strong.classList.add(pctClass(change));
+  }
+  row.append(changePill);
+  row.append(statPill("24h volume", loading ? null : formatCompactUsd(asFinite(pair && pair.volume && pair.volume.h24)), loading));
+  row.append(statPill("Liquidity", loading ? null : formatCompactUsd(asFinite(pair && pair.liquidity && pair.liquidity.usd)), loading));
+  return row;
+}
+
+function statPill(label, value, loading) {
+  const pill = el("p", { className: "stat-pill" });
+  pill.append(el("span", { text: label }));
+  if (loading) pill.append(el("span", { className: "skeleton sk-pill", attrs: { "aria-hidden": "true" } }));
+  else pill.append(el("strong", { text: value || "—" }));
+  return pill;
+}
+
+function renderTrendRail(model, actions) {
+  const open = model.railOpen !== false;
+  const rail = el("aside", {
+    className: open ? "trend-rail" : "trend-rail is-collapsed",
+    attrs: { "data-region": "trend-rail", "aria-label": "Trending coins" },
+  });
+  const head = el("div", { className: "trend-rail-head" });
+  head.append(el("h2", { text: open ? "Trending" : "" }));
+  head.append(el("button", {
+    className: "ghost trend-toggle",
+    text: open ? "Hide" : "Trending",
+    attrs: {
+      type: "button",
+      "aria-expanded": open ? "true" : "false",
+      "aria-label": open ? "Hide trending coins" : "Show trending coins",
+    },
+    on: { click: () => actions.toggleTrendRail() },
+  }));
+  rail.append(head);
+  if (!open) return rail;
+  const rows = Array.isArray(model.trending) ? model.trending : [];
+  if (!rows.length) {
+    rail.append(el("p", { className: "fine", text: "Loading trending coins…" }));
+    return rail;
+  }
+  const list = el("div", { className: "trend-list" });
+  for (const row of rows) {
+    const change = row.change && row.change.h24;
+    const current = row.ca === model.ca;
+    const link = el("a", {
+      className: current ? "trend-link is-current" : "trend-link",
+      attrs: {
+        href: model.tokenHref(row.ca),
+        "aria-current": current ? "page" : false,
+      },
+    });
+    link.append(tokenAvatar(row.image, row.symbol || row.name, 28));
+    const copy = el("span", { className: "trend-copy" });
+    copy.append(el("span", { className: "coin-sym", text: row.symbol || shortCa(row.ca) }));
+    copy.append(el("span", { className: "trend-price", text: formatPrice(row.priceUsd) }));
+    link.append(copy);
+    const meta = el("span", { className: "trend-meta" });
+    meta.append(el("span", { text: formatCompactUsd(row.marketCap) }));
+    meta.append(el("span", { className: pctClass(change), text: formatPct(change) }));
+    link.append(meta);
+    list.append(link);
+  }
+  rail.append(list);
+  return rail;
+}
+
+function renderAbout(model, actions) {
+  const symbol = pairSymbol(model.pair, model.fallback) || "token";
+  const section = el("section", {
+    className: "panel about-card",
+    attrs: { "data-region": "about", "aria-labelledby": "about-heading" },
+  });
+  section.append(el("h2", { attrs: { id: "about-heading" }, text: `About ${symbol}` }));
+  const about = model.about;
+  if (!about) {
+    section.append(el("p", { className: "fine", text: "Loading the public token profile…" }));
+    return section;
+  }
+  section.append(el("p", {
+    className: "about-copy",
+    text: about.description || "No description in the public token profile.",
+  }));
+  const windowId = model.aboutWindow || "h24";
+  const chips = el("div", { className: "about-windows", attrs: { role: "group", "aria-label": "Change windows" } });
+  for (const item of BOARD_WINDOWS) {
+    const change = about.windows && about.windows[item.id] ? about.windows[item.id].change : null;
+    chips.append(el("button", {
+      className: `about-win ${pctClass(change)}`,
+      attrs: {
+        type: "button",
+        "aria-pressed": windowId === item.id ? "true" : "false",
+        title: item.title,
+      },
+      on: { click: () => actions.setAboutWindow(item.id) },
+    }, [
+      el("span", { text: item.label }),
+      el("strong", { text: formatPct(change) }),
+    ]));
+  }
+  section.append(chips);
+  section.append(el("p", {
+    className: "fine",
+    text: "6h is the closest published window. These feeds do not include 4h or 12h.",
+  }));
+  const bucket = about.windows && about.windows[windowId] ? about.windows[windowId] : {};
+  section.append(el("h3", { text: "Buys vs sells" }));
+  section.append(splitBlock(bucket.buys, bucket.sells, "buys", "sells", formatCount));
+  section.append(el("h3", { text: "Buy vs sell volume" }));
+  section.append(el("p", { className: "fine", text: "Dollar volume reported by Jupiter for this window." }));
+  section.append(splitBlock(bucket.buyVolume, bucket.sellVolume, "buy", "sell", formatCompactUsd));
+  section.append(el("h3", { text: "Buyers vs sellers" }));
+  section.append(el("p", { className: "fine", text: "Unique wallets on the deepest GeckoTerminal pool." }));
+  section.append(splitBlock(bucket.buyers, bucket.sellers, "buyers", "sellers", formatCount));
+  const links = el("div", { className: "about-links" });
+  for (const link of about.links || []) {
+    links.append(externalLink(link.href, link.label, "ghost"));
+  }
+  links.append(externalLink(xSearchUrl(symbol, model.ca), "Search on X", "ghost"));
+  section.append(links);
+  return section;
+}
+
+function splitBlock(part, other, partLabel, otherLabel, format) {
+  const step = splitStep(part, other);
+  if (step == null) return el("p", { className: "fine", text: "Not in the public feed." });
+  const wrap = el("div", { className: "split-block" });
+  wrap.append(el("p", {
+    className: "split-caption",
+    text: `${format(part)} ${partLabel} · ${format(other)} ${otherLabel}`,
+  }));
+  const bar = el("span", { className: "split-bar", attrs: { "aria-hidden": "true" } });
+  bar.append(el("span", { className: `holder-fill p-${step}` }));
+  wrap.append(bar);
+  return wrap;
+}
+
+function shownBuyAmount(model) {
+  if (!model) return "0.1";
+  if (typeof model.swapSol === "number") return String(model.swapSol);
+  if (typeof model.swapLamports === "string" && /^\d+$/.test(model.swapLamports)) {
+    const sol = Number(model.swapLamports) / 1e9;
+    if (Number.isFinite(sol) && sol > 0) {
+      return sol.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+    }
+  }
+  return "0.1";
 }
 
 function renderDexNotice(model) {
@@ -959,6 +980,7 @@ export function renderSwapPanel(ca, model, actions) {
 function renderSwap(ca, model, actions) {
   const side = model && model.swapSide === "sell" ? "sell" : "buy";
   const solAmount = model ? model.swapSol : null;
+  const symbol = pairSymbol(model && model.pair, model && model.fallback) || "token";
   const section = el("section", {
     className: "panel token-swap",
     attrs: { id: "trade-panel", "data-region": "swap", "aria-labelledby": "swap-heading" },
@@ -978,16 +1000,47 @@ function renderSwap(ca, model, actions) {
   tabs.append(tradeTab("sell", "Sell", side, actions));
   section.append(tabs);
   if (side === "buy") {
+    const field = el("label", { className: "swap-amount" });
+    field.append(el("span", { text: "You pay" }));
+    field.append(el("input", {
+      attrs: {
+        type: "text",
+        inputmode: "decimal",
+        maxlength: "16",
+        autocomplete: "off",
+        spellcheck: "false",
+        "data-swap-amount": "true",
+        "aria-label": "Buy amount in SOL",
+        value: shownBuyAmount(model),
+      },
+    }));
+    field.append(el("span", { className: "swap-unit", text: "SOL" }));
+    section.append(field);
     const amounts = el("div", { className: "amount-row" });
     for (const sol of BUY_SOL_AMOUNTS) {
       amounts.append(el("button", {
         className: "ghost amount-btn",
-        text: `${sol} SOL`,
+        text: `${sol}`,
         attrs: {
           type: "button",
           "aria-pressed": solAmount === sol ? "true" : "false",
+          "aria-label": `${sol} SOL`,
         },
         on: { click: () => actions.setSwapSol(sol) },
+      }));
+    }
+    for (const usd of BUY_USD_PRESETS) {
+      const lamports = lamportsFromUsd(usd, model && model.solPrice);
+      const pressed = Boolean(lamports && model && model.swapLamports === lamports);
+      amounts.append(el("button", {
+        className: "ghost amount-btn",
+        text: `$${usd}`,
+        attrs: {
+          type: "button",
+          "aria-pressed": pressed ? "true" : "false",
+          "aria-label": `About $${usd} of SOL`,
+        },
+        on: { click: () => actions.setSwapUsd(usd) },
       }));
     }
     section.append(amounts);
@@ -997,6 +1050,16 @@ function renderSwap(ca, model, actions) {
       text: "Enter the sell amount in the Jupiter form. This page does not read your wallet, so it cannot fill a percent of your balance.",
     }));
   }
+  section.append(el("button", {
+    className: side === "sell" ? "swap-go swap-go-sell" : "primary swap-go",
+    text: side === "buy" ? `Buy ${symbol} in Jupiter` : `Sell ${symbol} in Jupiter`,
+    attrs: { type: "button" },
+    on: { click: () => actions.applySwapAmount() },
+  }));
+  section.append(el("p", {
+    className: "fine",
+    text: "The button only fills Jupiter. You connect and sign in your own wallet. Honey Charts never sees your keys.",
+  }));
   const feeText = feeDisclosure();
   if (feeText) section.append(el("p", { className: "fee-note", text: feeText }));
   section.append(el("p", { className: "muted", attrs: { "data-swap-status": "true" } }));

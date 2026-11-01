@@ -242,6 +242,9 @@ describe("jupiter swap link", () => {
     assert.equal(buildSwapForm(BONK, { solAmount: 0.5 }).initialAmount, "500000000");
     assert.equal(buildSwapForm(BONK, { solAmount: 1 }).initialAmount, "1000000000");
     assert.equal(buildSwapForm(BONK, { solAmount: 2 }).initialAmount, undefined);
+    assert.equal(buildSwapForm(BONK, { lamports: "100000000" }).initialAmount, "100000000");
+    assert.equal(buildSwapForm(BONK, { lamports: "0" }).initialAmount, undefined);
+    assert.equal(buildSwapForm(BONK, { side: "sell", lamports: "100000000" }).initialAmount, undefined);
     assert.equal(solToSmallestUnit(0.5), "500000000");
     assert.equal(feeDisclosure(), "Includes a 0.5% Honeycharts fee.");
 

@@ -11,7 +11,7 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 - Save tokens in the Hive. The list lives in `localStorage` on this browser. You can sort it, add a short note, remove a token, and export or import a JSON backup.
 - See tokens you opened under Recently viewed.
 - Read a Honey Score from 0 to 100. It restates public RugCheck and DexScreener flags. It is not a safety rating and it is not financial advice.
-- Browse Solana tokens from DexScreener's boosted list and latest profiles. Boosted rows are labeled as paid promotion.
+- Land on a full-width board of live Solana coins: a trending chip strip, a sortable table (Trending, Most held, New, Graduated, Watchlist), new pairs, and top movers. A slim intro at the top can be dismissed on this browser. Paid DexScreener boosts sit at the bottom and are labeled as paid. Quick buy opens the token page with 0.1, 0.5, or 1 SOL filled into Jupiter. It does not sign.
 - Share a token with `?ca=` (`?t=` is an alias, and older `#ca` links still open). Copy the address, copy the link, or open an X post draft.
 - Buy or sell from the token page. On a wide screen the Jupiter form sits in a sticky column to the right of the chart, with Buy (SOL to the token) and Sell (token to SOL) tabs, then the pair stats. Buy has 0.1, 0.5, and 1 SOL shortcuts. Sell amount stays in Jupiter's form. On a phone, a Buy/Sell bar stays at the bottom and opens that same form as a sheet. Wallet connect and signing stay inside Jupiter. The form includes a 0.5% Honeycharts fee (`referralAccount` and `referralFee` of 50 bps). Under the chart, Trades, Holders, and Info tabs keep the pair counts, the RugCheck holder list, the Honey Score, and the Serial Rugger check.
 - Launch a Pump.fun bonding-curve token from the Launch tab. It is mainnet only, tradable immediately, and asks for one signature after a confirmation checkbox. The review screen says `Includes 0.02 SOL Honeycharts launch fee`.
@@ -55,8 +55,10 @@ node --test
 - `https://api.jup.ag/tokens/v2/search?query=<name>` (optional verified or strict-list marker, and a fallback when DexScreener has no Solana pair)
 - `https://api.dexscreener.com/latest/dex/tokens/<CA>`
 - `https://api.dexscreener.com/tokens/v1/solana/<addresses>` (up to 30 at a time)
-- `https://api.dexscreener.com/token-boosts/top/v1`
-- `https://api.dexscreener.com/token-profiles/latest/v1`
+- `https://api.dexscreener.com/token-boosts/top/v1` (paid placements, shown at the bottom of the home page)
+- `https://api.geckoterminal.com/api/v2/networks/solana/trending_pools` and `new_pools` (trending order, new pools, unique buyers and sellers)
+- `https://api.jup.ag/tokens/v2/toptrending/1h`, `toptraded/24h`, and `recent` (holder counts and buy or sell volume). No API key.
+- Public change windows are 5m, 1h, 6h, and 24h. The feeds do not publish 4h or 12h, so the toggles say 6h.
 - `https://api.rugcheck.xyz/v1/tokens/<CA>/report`
 - Read-only Solana JSON-RPC at `https://solana-rpc.publicnode.com` (`getSignaturesForAddress`, `getTransaction`). `api.mainnet-beta.solana.com` rejects browser origins, so deployer lookups use the public node. No API key. The calls do not sign or send transactions.
 - Chart frame: `https://dexscreener.com/solana/<CA>?embed=1&theme=dark`
@@ -97,7 +99,7 @@ The header brand comes from `BRAND_NAME` in `js/config.js` and reads `Honey Char
 
 On a token page, Honey Charts shows the deployer wallet. It uses RugCheck's `creator` field when that value is a Solana address. If the field is empty, it walks the mint's signatures on the public RPC, up to three pages, and reads the first signer of the oldest transaction it actually reaches. If that transaction is not in those pages, the page says the deployer was not found.
 
-Check a wallet (home, the Lookup nav item, or `?wallet=`) lists mints that address initialized. A mint counts when the wallet is the first signer on a transaction whose instructions include `initializeMint` or `initializeMint2`. The newest 160 transactions that mention the wallet are read. If the history is longer, the page says the scan is partial. Older launches are not counted as healthy or rugged. Pump.fun's website API is not used.
+Check a wallet (the Wallet nav item, or `?wallet=`) lists mints that address initialized. A mint counts when the wallet is the first signer on a transaction whose instructions include `initializeMint` or `initializeMint2`. The newest 160 transactions that mention the wallet are read. If the history is longer, the page says the scan is partial. Older launches are not counted as healthy or rugged. Pump.fun's website API is not used.
 
 Each mint is then priced from DexScreener. A coin is a loss only when a figure exists:
 

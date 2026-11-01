@@ -133,6 +133,36 @@ export async function fetchRugcheck(ca, options = {}) {
   return data;
 }
 
+export function geckoPoolsUrl(kind) {
+  const slug = kind === "new" ? "new_pools" : "trending_pools";
+  return `https://api.geckoterminal.com/api/v2/networks/solana/${slug}?include=base_token,quote_token&page=1`;
+}
+
+export function jupiterBoardUrl(kind) {
+  if (kind === "recent") return "https://api.jup.ag/tokens/v2/recent?limit=30";
+  if (kind === "traded") return "https://api.jup.ag/tokens/v2/toptraded/24h?limit=40";
+  return "https://api.jup.ag/tokens/v2/toptrending/1h?limit=40";
+}
+
+export function geckoTokenInfoUrl(ca) {
+  return `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${encodeURIComponent(ca)}/info`;
+}
+
+export function geckoTokenPoolsUrl(ca) {
+  return `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${encodeURIComponent(ca)}/pools?page=1`;
+}
+
+export async function fetchGeckoPools(kind, options = {}) {
+  const data = await fetchJson(geckoPoolsUrl(kind), { ttl: 15000, ...options });
+  if (!data || typeof data !== "object" || Array.isArray(data)) return { data: [], included: [] };
+  return data;
+}
+
+export async function fetchJupiterBoard(kind, options = {}) {
+  const data = await fetchJson(jupiterBoardUrl(kind), { ttl: 15000, ...options });
+  return Array.isArray(data) ? data : [];
+}
+
 export async function fetchSolanaFeed(kind, options = {}) {
   const url = kind === "boosts"
     ? "https://api.dexscreener.com/token-boosts/top/v1"

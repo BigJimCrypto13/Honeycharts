@@ -11,6 +11,8 @@ export const SOL_MINT = "So11111111111111111111111111111111111111112";
 // unit (lamports for SOL). It has no "percent of the wallet" field, and this
 // page does not read a balance, so sell amounts stay in the plugin form.
 export const BUY_SOL_AMOUNTS = [0.1, 0.5, 1];
+export const BUY_USD_PRESETS = [10, 25, 100];
+export const MAX_BUY_SOL = 100;
 
 let scriptPromise = null;
 let initSerial = 0;
@@ -21,11 +23,35 @@ export function jupiterSwapUrl(ca) {
 }
 
 export function solToSmallestUnit(sol) {
-  const text = typeof sol === "number" ? String(sol) : "";
-  if (!/^\d+(\.\d+)?$/.test(text)) return null;
+  const text = typeof sol === "number" ? fixedSol(sol) : typeof sol === "string" ? sol.trim() : "";
+  if (!/^\d+(\.\d+)?$/.test(text) || text.length > 18) return null;
   const [whole, frac = ""] = text.split(".");
+  if (frac.length > 9) return null;
   const padded = (frac + "000000000").slice(0, 9);
-  return (BigInt(whole) * 1000000000n + BigInt(padded)).toString();
+  try {
+    return (BigInt(whole) * 1000000000n + BigInt(padded)).toString();
+  } catch {
+    return null;
+  }
+}
+
+export function lamportsFromSol(sol) {
+  const lamports = solToSmallestUnit(sol);
+  if (!lamports || lamports === "0") return null;
+  const max = BigInt(MAX_BUY_SOL) * 1000000000n;
+  if (BigInt(lamports) > max) return null;
+  return lamports;
+}
+
+export function lamportsFromUsd(usd, solPriceUsd) {
+  if (!BUY_USD_PRESETS.includes(usd)) return null;
+  if (typeof solPriceUsd !== "number" || !Number.isFinite(solPriceUsd) || solPriceUsd <= 0) return null;
+  return lamportsFromSol(usd / solPriceUsd);
+}
+
+function fixedSol(number) {
+  if (!Number.isFinite(number) || number < 0) return "";
+  return number.toFixed(9).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 export async function mountSwap(ca, options = {}) {
@@ -63,6 +89,14 @@ export function buildSwapForm(ca, options = {}) {
   if (side === "buy" && BUY_SOL_AMOUNTS.includes(options.solAmount)) {
     const amount = solToSmallestUnit(options.solAmount);
     if (amount) form.initialAmount = amount;
+  } else if (side === "buy" && typeof options.lamports === "string" && /^\d{1,12}$/.test(options.lamports)) {
+    try {
+      const value = BigInt(options.lamports);
+      const max = BigInt(MAX_BUY_SOL) * 1000000000n;
+      if (value > 0n && value <= max) form.initialAmount = value.toString();
+    } catch {
+      // Ignore a bad amount. The form still opens with no size filled in.
+    }
   }
   const fee = referralFeeConfig();
   if (!fee) return form;
