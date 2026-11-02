@@ -133,15 +133,34 @@ export async function fetchRugcheck(ca, options = {}) {
   return data;
 }
 
-export function geckoPoolsUrl(kind) {
+function clampPage(page) {
+  const number = Number(page);
+  if (!Number.isInteger(number) || number < 1 || number > 10) return 1;
+  return number;
+}
+
+export function geckoPoolsUrl(kind, page = 1) {
   const slug = kind === "new" ? "new_pools" : "trending_pools";
-  return `https://api.geckoterminal.com/api/v2/networks/solana/${slug}?include=base_token,quote_token&page=1`;
+  return `https://api.geckoterminal.com/api/v2/networks/solana/${slug}?include=base_token,quote_token&page=${clampPage(page)}`;
+}
+
+const DEX_SLUGS = new Set(["pump-fun", "pumpswap"]);
+
+export function geckoDexPoolsUrl(dex, page = 1, sort = "") {
+  if (!DEX_SLUGS.has(dex)) return "";
+  const base = `https://api.geckoterminal.com/api/v2/networks/solana/dexes/${dex}/pools?include=base_token,quote_token&page=${clampPage(page)}`;
+  if (sort === "h24_volume_usd_desc") return `${base}&sort=h24_volume_usd_desc`;
+  return base;
 }
 
 export function jupiterBoardUrl(kind) {
   if (kind === "recent") return "https://api.jup.ag/tokens/v2/recent?limit=30";
-  if (kind === "traded") return "https://api.jup.ag/tokens/v2/toptraded/24h?limit=40";
-  return "https://api.jup.ag/tokens/v2/toptrending/1h?limit=40";
+  if (kind === "traded") return "https://api.jup.ag/tokens/v2/toptraded/24h?limit=50";
+  return "https://api.jup.ag/tokens/v2/toptrending/1h?limit=50";
+}
+
+export function jupiterFallbackUrl(kind) {
+  return jupiterBoardUrl(kind).replace("https://api.jup.ag/", "https://lite-api.jup.ag/");
 }
 
 export function geckoTokenInfoUrl(ca) {
@@ -152,15 +171,60 @@ export function geckoTokenPoolsUrl(ca) {
   return `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${encodeURIComponent(ca)}/pools?page=1`;
 }
 
+function withoutPage(options) {
+  const rest = { ...options };
+  delete rest.page;
+  delete rest.sort;
+  return rest;
+}
+
 export async function fetchGeckoPools(kind, options = {}) {
-  const data = await fetchJson(geckoPoolsUrl(kind), { ttl: 15000, ...options });
+  const data = await fetchJson(geckoPoolsUrl(kind, options.page), { ttl: 15000, ...withoutPage(options) });
   if (!data || typeof data !== "object" || Array.isArray(data)) return { data: [], included: [] };
   return data;
 }
 
+export async function fetchGeckoDexPools(dex, options = {}) {
+  const url = geckoDexPoolsUrl(dex, options.page, options.sort || "");
+  if (!url) return { data: [], included: [] };
+  try {
+    const data = await fetchJson(url, { ttl: 15000, ...withoutPage(options) });
+    if (!data || typeof data !== "object" || Array.isArray(data)) return { data: [], included: [] };
+    return data;
+  } catch (error) {
+    if (error && error.name === "AbortError") throw error;
+    return { data: [], included: [] };
+  }
+}
+
 export async function fetchJupiterBoard(kind, options = {}) {
-  const data = await fetchJson(jupiterBoardUrl(kind), { ttl: 15000, ...options });
+  try {
+    const data = await fetchJson(jupiterBoardUrl(kind), { ttl: 12000, ...options });
+    if (Array.isArray(data)) return data;
+  } catch (error) {
+    if (error && error.name === "AbortError") throw error;
+  }
+  const data = await fetchJson(jupiterFallbackUrl(kind), { ttl: 12000, ...options });
   return Array.isArray(data) ? data : [];
+}
+
+export async function fetchLatestProfiles(options = {}) {
+  try {
+    const data = await fetchJson("https://api.dexscreener.com/token-profiles/latest/v1", { ttl: 20000, ...options });
+    if (!Array.isArray(data)) return [];
+    const out = [];
+    for (const entry of data) {
+      if (!entry || entry.chainId !== "solana" || !isValidCA(entry.tokenAddress)) continue;
+      out.push({
+        ca: entry.tokenAddress,
+        icon: typeof entry.icon === "string" ? entry.icon : "",
+      });
+    }
+    return out;
+  } catch (error) {
+    if (error && error.name === "AbortError") throw error;
+    return [];
+  }
 }
 
 export async function fetchSolanaFeed(kind, options = {}) {
