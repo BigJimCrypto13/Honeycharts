@@ -38,6 +38,14 @@ export function walletPath(pathname, wallet) {
   return `${base}?wallet=${encodeURIComponent(wallet)}`;
 }
 
+export function profilePath(pathname, username) {
+  return `${appBase(pathname)}?u=${encodeURIComponent(username)}`;
+}
+
+export function editProfilePath(pathname) {
+  return `${appBase(pathname)}?view=edit-profile`;
+}
+
 // `?t=<mint>` is an alias of `?ca=<mint>`. A present `ca` wins when both are set.
 export function routeFromSearch(search) {
   const raw = typeof search === "string" ? search : "";
@@ -61,9 +69,12 @@ export function routeFromSearch(search) {
       error: "That is not a Solana wallet address (base58, 32–44 characters).",
     };
   }
+  const username = params.get("u");
+  if (username != null && username !== "") return { name: "profile", username: username.trim() };
   if (params.get("view") === "hive") return { name: "hive" };
   if (params.get("view") === "launch") return { name: "launch" };
   if (params.get("view") === "wallet") return { name: "wallet", wallet: "" };
+  if (params.get("view") === "edit-profile") return { name: "edit-profile" };
   return { name: "home" };
 }
 

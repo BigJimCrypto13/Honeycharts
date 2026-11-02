@@ -264,9 +264,10 @@ describe("page source", () => {
     const files = readdirSync(new URL("../js/", import.meta.url)).filter((name) => name.endsWith(".js"));
     const js = files.map((name) => readFileSync(new URL(`../js/${name}`, import.meta.url), "utf8")).join("\n");
     const withoutWallet = files
-      .filter((name) => name !== "wallet.js")
+      .filter((name) => name !== "wallet.js" && name !== "auth-wallet.js")
       .map((name) => readFileSync(new URL(`../js/${name}`, import.meta.url), "utf8"))
       .join("\n");
+    const authWallet = readFileSync(new URL("../js/auth-wallet.js", import.meta.url), "utf8");
     assert.match(html, /script-src 'self' https:\/\/plugin\.jup\.ag/);
     assert.match(html, /https:\/\/api\.dexscreener\.com/);
     assert.match(html, /https:\/\/api\.rugcheck\.xyz/);
@@ -279,9 +280,11 @@ describe("page source", () => {
     assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)/i);
     assert.doesNotMatch(html, /\son\w+=/i);
     assert.match(html, /Honeycharts will never ask for your seed phrase or private key\. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving\./);
-    assert.doesNotMatch(js, /innerHTML|insertAdjacentHTML|outerHTML|document\.write|eval\(|new Function|wallet-adapter|window\.solana|signMessage/);
-    assert.doesNotMatch(withoutWallet, /signTransaction/);
-    assert.doesNotMatch(js, /seed phrase|privateKey|secretKey\s*=/);
+    assert.doesNotMatch(js, /innerHTML|insertAdjacentHTML|outerHTML|document\.write|eval\(|new Function|wallet-adapter/);
+    assert.doesNotMatch(withoutWallet, /window\.solana|signMessage|signTransaction/);
+    assert.match(authWallet, /window\.solana/);
+    assert.doesNotMatch(authWallet, /signTransaction|signAndSendTransaction|signMessage/);
+    assert.doesNotMatch(js, /seed phrase|privateKey|secretKey\s*=|service_role/);
     assert.doesNotMatch(html + js, /style="/);
   });
 });

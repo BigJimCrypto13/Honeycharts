@@ -32,6 +32,8 @@ import { buildHoneyScore } from "./score.js";
 import { createCreatorCache, loadCreatorHistory, resolveCreator } from "./creator-scan.js";
 import { mountSwap, jupiterSwapUrl, BUY_SOL_AMOUNTS, lamportsFromSol, lamportsFromUsd } from "./swap.js";
 import { LAUNCH_ENABLED, brandLabel, copyrightNotice } from "./config.js";
+import { localPreviewKind } from "./account-logic.js";
+import { startAccounts } from "./account-ui.js";
 import { validateLaunch } from "./launch-form.js";
 import { renderLaunch } from "./launch-ui.js";
 import {
@@ -119,6 +121,16 @@ let boardAt = 0;
 let majors = { sol: null, btc: null, eth: null };
 let welcomeDismissed = readWelcomeDismissed(storage);
 let introSeen = readIntroSeen(storage);
+let accounts = {
+  hiveLead() { return ""; },
+  noteHiveChange() {},
+  closeMenu() {},
+  showProfile() {},
+  showEdit() {},
+  showPreview() {},
+  openSignIn() {},
+  cancelPage() {},
+};
 let introHandle = null;
 let aboutState = { ca: "", about: null };
 let aboutWindow = "h24";
@@ -221,6 +233,22 @@ function boot() {
     setStatus("Saved Hive data could not be read, so the list was cleared on this browser.");
     hive.clearReset();
   }
+  const preview = localPreviewKind(window.location);
+  accounts = startAccounts({
+    hive,
+    preview,
+    setStatus,
+    onHiveReplaced() {
+      syncChrome(currentRoute());
+      const route = currentRoute();
+      if (route.name === "hive") renderHive(view, hiveModel(), actions);
+      if (route.name === "home") renderHome(view, homeModel(), actions);
+    },
+    onSignedOut() {
+      const route = currentRoute();
+      if (route.name === "edit-profile" || route.name === "hive" || route.name === "home") render();
+    },
+  });
   render();
   refreshMajors();
   setInterval(refreshMajors, 30000);
@@ -255,9 +283,20 @@ function alive(gen) {
 function render() {
   const gen = begin();
   closeSearch();
+  if (accounts.cancelPage) accounts.cancelPage();
+  if (accounts.closeMenu) accounts.closeMenu();
+  const preview = localPreviewKind(window.location);
+  if (preview === "profile" || preview === "edit") {
+    document.body.classList.remove("is-token", "trade-open", "is-home");
+    document.body.classList.add("is-profile");
+    syncChrome({ name: preview === "edit" ? "edit-profile" : "profile" });
+    accounts.showPreview(view, preview);
+    return;
+  }
   const route = currentRoute();
   document.body.classList.toggle("is-token", route.name === "token");
   document.body.classList.toggle("is-home", route.name === "home");
+  document.body.classList.toggle("is-profile", route.name === "profile" || route.name === "edit-profile");
   if (route.name !== "token") document.body.classList.remove("trade-open");
   syncChrome(route);
   if (route.name !== "launch") launchState.wallet = null;
@@ -265,6 +304,8 @@ function render() {
   else if (route.name === "hive") showHive(gen);
   else if (route.name === "launch") showLaunch();
   else if (route.name === "wallet") showWallet(gen, route.wallet || "", route.error || "");
+  else if (route.name === "profile") accounts.showProfile(view, route.username);
+  else if (route.name === "edit-profile") accounts.showEdit(view);
   else showHome(gen, route.error || "");
   syncTradeSheet();
   syncIntro();
@@ -290,6 +331,8 @@ function syncChrome(route) {
   if (route.name === "launch") document.title = "Launch · Honey Charts";
   if (route.name === "wallet") document.title = "Check a wallet · Honey Charts";
   if (route.name === "token") document.title = "Token · Honey Charts";
+  if (route.name === "profile") document.title = "Profile · Honey Charts";
+  if (route.name === "edit-profile") document.title = "Edit profile · Honey Charts";
 }
 
 function setCurrent(node, on) {
@@ -808,6 +851,7 @@ function addLaunchToHive() {
   const form = launchState.form;
   if (!result || !form || !isValidCA(result.mint)) return;
   hive.add(result.mint, form.name, form.symbol);
+  noteHive({ type: "add", token: hive.get(result.mint) });
   launchState.savedHive = true;
   launchState.message = "Saved in this browser's Hive.";
   syncChrome(currentRoute());
@@ -828,6 +872,7 @@ function toggleHive() {
   if (hive.has(ca)) {
     const removed = hive.get(ca);
     hive.remove(ca);
+    noteHive({ type: "remove", ca });
     setHivePressed(view, false);
     syncChrome(route);
     setStatus("Removed from Hive.", undoButton(removed));
@@ -838,6 +883,7 @@ function toggleHive() {
     const name = clipText(pair && pair.baseToken && pair.baseToken.name, 64);
     const symbol = clipText(pair && pair.baseToken && pair.baseToken.symbol, 16);
     hive.add(ca, name, symbol);
+    noteHive({ type: "add", token: hive.get(ca) });
     setHivePressed(view, true);
     syncChrome(route);
     setStatus("Saved in this browser's Hive.");
@@ -856,6 +902,7 @@ function undoButton(token) {
       click: () => {
         try {
           hive.restore(token);
+          noteHive({ type: "add", token: hive.get(token.ca) });
           setHivePressed(view, hive.has(token.ca));
           syncChrome(currentRoute());
           setStatus("Restored to Hive.");
@@ -872,6 +919,7 @@ function undoButton(token) {
 function removeHive(ca) {
   const token = hive.get(ca);
   if (!token || !hive.remove(ca)) return;
+  noteHive({ type: "remove", ca });
   const label = token.symbol || "token";
   setStatus(`Removed ${label} from Hive.`, undoButton(token));
   renderHive(view, hiveModel(), actions);
@@ -955,6 +1003,7 @@ async function importHive(file, replace) {
   }
   try {
     const result = applyImport(hive, recent, parsed, replace ? "replace" : "merge");
+    noteHive({ type: result.replaced ? "replace" : "merge" });
     setStatus(result.replaced
       ? `Replaced the Hive with ${result.total} tokens.`
       : `Imported ${result.added} new tokens. Updated notes on ${result.updated}.`);
@@ -1173,6 +1222,10 @@ function watchIntro() {
 }
 
 function syncIntro() {
+  if (localPreviewKind(window.location)) {
+    if (introHandle && introHandle.isOpen()) introHandle.dismiss();
+    return;
+  }
   if (currentRoute().name !== "home") {
     if (introHandle && introHandle.isOpen()) introHandle.dismiss();
     return;
@@ -1257,11 +1310,13 @@ function toggleHiveCa(ca) {
   if (hive.has(ca)) {
     const removed = hive.get(ca);
     hive.remove(ca);
+    noteHive({ type: "remove", ca });
     setStatus("Removed from Hive.", undoButton(removed));
   } else {
     const row = boardRows.find((item) => item.ca === ca);
     try {
       hive.add(ca, row && row.name, row && row.symbol);
+      noteHive({ type: "add", token: hive.get(ca) });
       setStatus("Saved in this browser's Hive.");
     } catch (error) {
       setStatus(IMPORT_ERRORS[error.message] || "Couldn't add that token.");
@@ -1462,6 +1517,7 @@ function hiveModel(extra = {}) {
     stats,
     sort: hiveSort,
     persistent,
+    lead: accounts.hiveLead(),
     homeHref: homePath(location.pathname),
     tokenHref: (ca) => tokenPath(location.pathname, ca),
     restoreSortFocus: Boolean(extra.restoreSortFocus),
@@ -1790,6 +1846,10 @@ function feedErrorMessage(error) {
     return "DexScreener is rate-limiting requests. Wait a moment, then refresh.";
   }
   return "Couldn't load DexScreener's Solana feeds. You can still paste a contract address.";
+}
+
+function noteHive(change) {
+  if (accounts && accounts.noteHiveChange) accounts.noteHiveChange(change);
 }
 
 function setStatus(message, action) {
