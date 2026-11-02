@@ -12,6 +12,9 @@ import {
   ingestLaunch,
   launchFromJupiterToken,
   normalizePumpMessage,
+  bestPoolAddress,
+  chartValues,
+  closesFromOhlcv,
   pickKing,
   pushTape,
   selectGraduated,
@@ -207,6 +210,22 @@ describe("live launch feed", () => {
     assert.equal(selectGraduating([low], 10)[0].ca, MINT);
     assert.equal(selectGraduating([low, high, { ...high, ca: jupiterMint(3), vSol: 90 }, { ...high, ca: jupiterMint(4), vSol: 110 }, { ...high, ca: jupiterMint(5), vSol: 120 }], 10)[0].progress >= 45, true);
     assert.deepEqual(selectGraduated([done, trending, low], 10).map((token) => token.ca), [done.ca, trending.ca]);
+    const full = decorateLaunch({ ca: jupiterMint(9), graduated: false, launchpad: "pump.fun", vSol: 115, marketCapUsd: 900000, createdAt: 40 }, 100);
+    assert.equal(full.progress, 100);
+    assert.equal(pickKing([full, high, low]).ca, MINT_B);
+    assert.equal(pickKing([full, high, low]).kingRole, "curve");
+    const graduated = {
+      ca: jupiterMint(8),
+      graduated: true,
+      marketCapUsd: 1000,
+      liquidity: 100,
+      volume: { h1: 9000 },
+      createdAt: 50,
+    };
+    const quietGrad = { ca: jupiterMint(7), graduated: true, marketCapUsd: 800000, createdAt: 60 };
+    const crowned = pickKing([full, graduated, quietGrad]);
+    assert.equal(crowned.ca, graduated.ca);
+    assert.equal(crowned.kingRole, "graduated");
     assert.equal(pickKing([low, high]).ca, MINT_B);
     const path = sparklinePath([1, 2, 1.5], 64, 20);
     assert.match(path, /^M/);
@@ -214,10 +233,18 @@ describe("live launch feed", () => {
     assert.equal(sparklinePath([1], 64, 20), "");
     assert.deepEqual(sparklinePoints([1, null, -2, 3]), [1, 3]);
     const tape = pushTape(pushTape([], { id: "a", kind: "launch", ca: MINT, symbol: "<b>H</b>", devBuySol: 1.2, at: 10 }), {
-      id: "a", kind: "launch", ca: MINT, symbol: "H", at: 11,
+      id: "b", kind: "launch", ca: MINT, symbol: "H", at: 11,
     });
     assert.equal(tape.length, 1);
     assert.equal(tape[0].symbol, clipText("<b>H</b>", 16));
+    const closes = closesFromOhlcv({ data: { attributes: { ohlcv_list: [[30, 1, 2, 0.5, 1.5, 4], [10, 1, 1, 1, 1.1, 2], [20, 0, 0, 0, 0, 1]] } } });
+    assert.deepEqual(closes, [1.1, 1.5]);
+    assert.equal(chartValues([1, 2, 3, 4, 5, 6, 7]).length, 0);
+    assert.equal(chartValues([1, 2, 3, 4, 5, 6, 7, 8]).length, 8);
+    assert.equal(bestPoolAddress({ data: [
+      { attributes: { address: "GERyiUaesNmLqpbaivrPaBN5J5DN9ugBsEaXK81ijmBd", reserve_in_usd: "10" } },
+      { attributes: { address: "not-a-pool", reserve_in_usd: "99" } },
+    ] }), "GERyiUaesNmLqpbaivrPaBN5J5DN9ugBsEaXK81ijmBd");
     const jup = launchFromJupiterToken({
       id: MINT,
       name: "Honey",

@@ -16,6 +16,7 @@ import {
   topMovers,
 } from "./board.js";
 import {
+  chartValues,
   displayImage,
   formatLaunchAge,
   formatSolAmount,
@@ -689,34 +690,43 @@ function paintLiveStatus(root, status) {
 
 function paintTape(root, tape, model) {
   const track = root.querySelector("[data-tape]");
+  const viewport = track && track.parentElement;
   if (!track) return;
   const items = Array.isArray(tape) ? tape : [];
-  const sig = items.map((item) => item.id).join(",");
+  const sig = items.map((item) => `${item.kind}:${item.ca}:${item.symbol}:${item.image || ""}`).join(",");
   if (track.dataset.sig === sig) return;
   track.dataset.sig = sig;
+  track.classList.remove("is-loop");
   track.classList.toggle("is-waiting", items.length === 0);
   track.replaceChildren();
   if (!items.length) {
     track.append(el("span", { className: "tape-wait", text: "Waiting for the next launch…" }));
     return;
   }
-  track.append(tapeGroup(items, model, false));
-  track.append(tapeGroup(items, model, true));
+  const group = tapeGroup(items, model, false);
+  track.append(group);
+  const wide = viewport && group.scrollWidth > viewport.clientWidth + 24 && items.length >= 8;
+  if (wide) {
+    track.append(tapeGroup(items, model, true));
+    track.classList.add("is-loop");
+  }
 }
 
 function tapeGroup(items, model, clone) {
   const group = el("div", { className: "tape-group", attrs: clone ? { "aria-hidden": "true" } : {} });
   for (const item of items) {
     if (!item || !item.ca) continue;
-    const label = item.symbol || shortCa(item.ca) || "new";
+    const raw = item.symbol || shortCa(item.ca) || "new";
+    const label = raw.replace(/^\$+/, "") || "new";
     const text = item.kind === "migration"
       ? `GRAD $${label}`
-      : `NEW $${label}${item.devBuySol ? ` · ${formatSolAmount(item.devBuySol)}` : ""}`;
+      : `NEW $${label}${item.devBuySol != null ? ` · ${formatSolAmount(item.devBuySol)}` : ""}`;
     const link = el("a", {
       className: item.kind === "migration" ? "tape-item is-grad" : "tape-item",
       attrs: { href: model.tokenHref(item.ca) },
-      text,
     });
+    link.append(tokenAvatar(item.image, label, 18, false));
+    link.append(el("span", { text }));
     if (clone) link.tabIndex = -1;
     group.append(link);
   }
@@ -736,8 +746,10 @@ function paintKing(root, king, model, actions) {
     }
     return;
   }
-  if (card.dataset.ca !== king.ca) {
+  const role = king.kingRole || "curve";
+  if (card.dataset.ca !== king.ca || card.dataset.role !== role) {
     card.dataset.ca = king.ca;
+    card.dataset.role = role;
     card.replaceChildren(renderKing(king, model, actions));
     return;
   }
@@ -746,37 +758,47 @@ function paintKing(root, king, model, actions) {
 
 function renderKing(token, model, actions) {
   const wrap = el("div", { className: "king-grid" });
-  const copy = el("div", { className: "king-copy" });
-  const kicker = el("p", { className: "king-kicker" });
-  kicker.append(el("img", {
-    className: "king-mark",
-    attrs: { src: "assets/coin.webp", alt: "", width: "22", height: "22" },
-  }));
-  kicker.append(el("span", { text: "King of the hive" }));
-  copy.append(kicker);
   const link = el("a", { className: "king-id", attrs: { href: model.tokenHref(token.ca) } });
   const slot = el("span", { className: "avatar-slot" });
-  slot.append(tokenAvatar(displayImage(token), token.symbol || token.name, 84, true));
+  slot.append(tokenAvatar(displayImage(token), token.symbol || token.name, 76, true));
   link.append(slot);
   const titles = el("span", { className: "king-titles" });
-  titles.append(el("span", { className: "king-sym", attrs: { "data-king-sym": "true" }, text: token.symbol || shortCa(token.ca) }));
-  titles.append(el("span", { className: "king-name", attrs: { "data-king-name": "true" }, text: token.name || "" }));
-  titles.append(el("span", {
+  const kicker = el("span", { className: "king-kicker" });
+  kicker.append(el("img", {
+    className: "king-mark",
+    attrs: { src: "assets/coin.webp", alt: "", width: "16", height: "16" },
+  }));
+  kicker.append(el("span", { text: "King of the hive" }));
+  if (token.kingRole === "graduated") {
+    kicker.append(el("span", { className: "king-role", attrs: { "data-king-role": "true" }, text: "Graduated" }));
+  }
+  titles.append(kicker);
+  const nameRow = el("span", { className: "king-name-row" });
+  nameRow.append(el("span", { className: "king-sym", attrs: { "data-king-sym": "true" }, text: token.symbol || shortCa(token.ca) }));
+  nameRow.append(el("span", { className: "king-name", attrs: { "data-king-name": "true" }, text: token.name || "" }));
+  nameRow.append(el("span", {
     className: "king-age",
     attrs: { "data-age": "true", "data-born": token.createdAt ? String(token.createdAt) : "" },
     text: token.createdAt ? formatLaunchAge(Date.now() - token.createdAt) : "—",
   }));
-  link.append(titles);
-  copy.append(link);
-  const stats = el("div", { className: "king-stats" });
+  titles.append(nameRow);
+  const stats = el("span", { className: "king-stats" });
   stats.append(el("span", { className: "king-mcap", attrs: { "data-king-mcap": "true" }, text: money(token.marketCapUsd) }));
-  stats.append(el("span", { className: "king-dev", attrs: { "data-king-dev": "true" }, text: devText(token) }));
-  copy.append(stats);
-  copy.append(progressBlock(token, true));
-  const kingSpark = launchSparkValues(token);
-  const spark = sparklinePath(kingSpark, 140, 36);
-  if (spark) copy.append(sparkSvg(spark, kingSpark[kingSpark.length - 1] - kingSpark[0], 140, 36));
-  wrap.append(copy);
+  stats.append(changeChip(token, "m5", "5m"));
+  stats.append(changeChip(token, "h1", "1h"));
+  const extra = kingExtra(token);
+  if (extra) stats.append(el("span", { className: "king-extra", attrs: { "data-king-extra": "true" }, text: extra }));
+  titles.append(stats);
+  if (token.kingRole === "graduated") {
+    titles.append(el("span", { className: "king-grad", text: "Graduated" }));
+  } else {
+    titles.append(progressBlock(token, true));
+  }
+  link.append(titles);
+  wrap.append(link);
+  const chart = el("span", { className: "king-chart", attrs: { "data-king-chart": "true" } });
+  appendKingChart(chart, token.chart);
+  wrap.append(chart);
   const actionsRow = el("div", { className: "king-actions" });
   actionsRow.append(starButton(token, model.inHive(token.ca), actions));
   actionsRow.append(el("a", {
@@ -788,20 +810,61 @@ function renderKing(token, model, actions) {
   return wrap;
 }
 
+function changeChip(token, id, label) {
+  const value = token.change && token.change[id];
+  return el("span", {
+    className: `king-chg ${pctClass(value)}`,
+    attrs: { [`data-king-${id}`]: "true" },
+    text: `${label} ${formatPct(value)}`,
+  });
+}
+
+function kingExtra(token) {
+  if (typeof token.holders === "number") return `${formatCount(token.holders)} holders`;
+  const volume = token.volume && (token.volume.h1 != null ? token.volume.h1 : token.volume.m5);
+  if (typeof volume === "number" && volume > 0) return `${money(volume)} vol`;
+  return "";
+}
+
+function appendKingChart(host, values) {
+  host.replaceChildren();
+  const points = chartValues(values);
+  if (points.length < 8) return;
+  const path = sparklinePath(points, 128, 52);
+  if (!path) return;
+  host.append(sparkSvg(path, points[points.length - 1] - points[0], 128, 52));
+}
+
 function updateKing(card, token, model) {
   setText(card, "[data-king-sym]", token.symbol || shortCa(token.ca));
   setText(card, "[data-king-name]", token.name || "");
   setText(card, "[data-king-mcap]", money(token.marketCapUsd));
-  setText(card, "[data-king-dev]", devText(token));
+  setChangeChip(card, "m5", "5m", token.change && token.change.m5);
+  setChangeChip(card, "h1", "1h", token.change && token.change.h1);
+  const extra = card.querySelector("[data-king-extra]");
+  const extraText = kingExtra(token);
+  if (extra) {
+    extra.hidden = !extraText;
+    extra.textContent = extraText;
+  }
   const age = card.querySelector("[data-age]");
   if (age && token.createdAt) age.setAttribute("data-born", String(token.createdAt));
   const buy = card.querySelector("[data-king-buy]");
   if (buy) buy.setAttribute("href", model.tradeHref(token.ca));
-  syncProgress(card, token);
-  syncSpark(card, launchSparkValues(token), 140, 36);
+  if (token.kingRole !== "graduated") syncProgress(card, token);
+  const chart = card.querySelector("[data-king-chart]");
+  if (chart) appendKingChart(chart, token.chart);
   syncStar(card, token, model);
   const slot = card.querySelector(".avatar-slot");
-  if (slot) syncAvatar(slot, displayImage(token), token.symbol || token.name, 84, true);
+  if (slot) syncAvatar(slot, displayImage(token), token.symbol || token.name, 76, true);
+}
+
+function setChangeChip(root, id, label, value) {
+  const node = root.querySelector(`[data-king-${id}]`);
+  if (!node) return;
+  node.textContent = `${label} ${formatPct(value)}`;
+  node.classList.remove("up", "down", "flat");
+  node.classList.add(pctClass(value));
 }
 
 function syncLaunchList(section, items, total, model, actions, status) {

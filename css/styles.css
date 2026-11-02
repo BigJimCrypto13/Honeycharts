@@ -1278,9 +1278,17 @@ body.intro-open { overflow: hidden; }
   border-radius: 12px;
   overflow: hidden;
 }
-.col-head { padding: 8px 10px 4px; }
-.col-head h2 { font-size: 0.95rem; }
-.col-head p { margin-top: 2px; color: var(--dim); font-size: 0.72rem; line-height: 1.3; }
+.col-head { padding: 6px 8px 2px; }
+.col-head h2 { font-size: 0.92rem; }
+.col-head p {
+  margin-top: 1px;
+  color: var(--dim);
+  font-size: 0.68rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .board-scroll { overflow: auto; min-height: 0; flex: 1; }
 .board-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 .board-table th, .board-table td {
@@ -1409,36 +1417,39 @@ body.intro-open { overflow: hidden; }
 .tape-track {
   display: flex;
   width: max-content;
-  animation: tape-move 42s linear infinite;
 }
+.tape-track.is-loop { animation: tape-move 70s linear infinite; }
 .live-tape:hover .tape-track,
 .live-tape:focus-within .tape-track { animation-play-state: paused; }
 .tape-track.is-waiting { animation: none; }
-.tape-group { display: flex; gap: 14px; padding-right: 14px; }
+.tape-group { display: flex; gap: 16px; padding-right: 16px; }
 .tape-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text);
   font-size: 0.75rem;
   font-weight: 800;
   text-decoration: none;
   white-space: nowrap;
 }
+.tape-item .avatar { width: 18px; height: 18px; font-size: 0.48rem; }
 .tape-item.is-grad { color: var(--gold); }
 .tape-wait { color: var(--dim); font-size: 0.75rem; }
 .king-card {
   margin: 0 0 8px;
-  padding: 8px 10px;
+  padding: 6px 10px;
   border: 1px solid var(--gold);
   border-radius: 14px;
   background:
-    radial-gradient(120% 140% at 0% 0%, rgba(255, 213, 74, 0.16), transparent 46%),
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 213, 74, 0.16), transparent 42%),
     rgba(18, 14, 9, 0.94);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
 }
 .king-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 12px;
+  display: flex;
   align-items: center;
+  gap: 12px;
 }
 .king-kicker {
   display: flex;
@@ -1446,12 +1457,19 @@ body.intro-open { overflow: hidden; }
   gap: 6px;
   margin: 0;
   color: var(--gold);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.king-mark { width: 22px; height: 22px; border-radius: 50%; }
+.king-mark { width: 16px; height: 16px; border-radius: 50%; }
+.king-role, .king-grad {
+  color: var(--ink);
+  background: var(--gold);
+  border-radius: 999px;
+  padding: 0 6px;
+  letter-spacing: 0.04em;
+}
 .king-id {
   display: flex;
   align-items: center;
@@ -1460,16 +1478,23 @@ body.intro-open { overflow: hidden; }
   color: inherit;
   text-decoration: none;
 }
-.king-id .avatar { width: 72px; height: 72px; font-size: 1.1rem; }
-.king-titles { display: flex; flex-direction: column; min-width: 0; }
+.king-id .avatar { width: 76px; height: 76px; font-size: 1.15rem; }
+.king-id { flex: 1; }
+.king-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.king-name-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .king-sym { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.03em; }
 .king-name, .king-age { color: var(--dim); font-size: 0.78rem; }
-.king-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 36ch; }
-.king-stats { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.king-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28ch; }
+.king-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-variant-numeric: tabular-nums; }
 .king-mcap { font-size: 1.15rem; font-weight: 800; }
-.king-dev { color: var(--muted); align-self: center; }
-.king-actions { display: flex; flex-direction: column; gap: 6px; }
-.king-buy { min-height: 36px; padding: 4px 14px; font-size: 0.85rem; }
+.king-chg, .king-extra { font-size: 0.78rem; font-weight: 700; }
+.king-extra:empty, .king-extra[hidden] { display: none; }
+.king-titles .curve-block { width: 100%; max-width: none; }
+.king-titles .curve { height: 6px; }
+.king-chart { width: 128px; height: 52px; }
+.king-chart:empty { display: none; }
+.king-actions { display: flex; flex-direction: column; gap: 4px; }
+.king-buy { min-height: 34px; padding: 4px 14px; font-size: 0.85rem; }
 .king-wait { margin: 0; color: var(--dim); }
 .live-stage {
   display: grid;
@@ -1480,8 +1505,8 @@ body.intro-open { overflow: hidden; }
 .live-col {
   display: flex;
   flex-direction: column;
-  min-height: 240px;
-  max-height: min(480px, calc(100dvh - 470px));
+  min-height: 220px;
+  max-height: calc(100dvh - 392px);
   background: rgba(18, 14, 9, 0.92);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1508,7 +1533,7 @@ body.intro-open { overflow: hidden; }
     "curve actions";
   gap: 1px 8px;
   align-items: center;
-  padding: 7px 8px;
+  padding: 3px 8px;
   border-bottom: 1px solid rgba(107, 76, 22, 0.4);
 }
 .launch-card.is-new { animation: hive-in 780ms ease; }
@@ -1521,7 +1546,7 @@ body.intro-open { overflow: hidden; }
   color: inherit;
   text-decoration: none;
 }
-.launch-card .avatar { width: 46px; height: 46px; font-size: 0.78rem; }
+.launch-card .avatar { width: 38px; height: 38px; font-size: 0.68rem; }
 .launch-copy { display: flex; flex-direction: column; min-width: 0; }
 .launch-sym { font-weight: 800; }
 .launch-name, .launch-age { color: var(--dim); font-size: 0.72rem; }
@@ -1762,9 +1787,10 @@ body.intro-open { overflow: hidden; }
   .board-col, .live-col { display: none; max-height: none; min-height: 360px; }
   .board-col.is-active, .live-col.is-active { display: flex; }
   .live-col.is-active { max-height: calc(100dvh - 188px); }
-  .king-grid { grid-template-columns: auto minmax(0, 1fr); }
-  .king-id .avatar { width: 56px; height: 56px; }
-  .king-sym { font-size: 1.1rem; }
+  .king-grid { grid-template-columns: minmax(0, 1fr) auto; }
+  .king-chart { display: none; }
+  .king-id .avatar { width: 64px; height: 64px; }
+  .king-sym { font-size: 1.15rem; }
   .king-actions { grid-column: 1 / -1; flex-direction: row; }
   .quick-buy { margin-left: 0; }
   .quick-buy .fine { display: none; }

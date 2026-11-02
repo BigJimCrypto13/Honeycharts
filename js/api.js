@@ -171,6 +171,11 @@ export function geckoTokenPoolsUrl(ca) {
   return `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${encodeURIComponent(ca)}/pools?page=1`;
 }
 
+export function geckoOhlcvUrl(pool) {
+  if (typeof pool !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(pool)) return "";
+  return `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?aggregate=1&limit=60&currency=usd`;
+}
+
 function withoutPage(options) {
   const rest = { ...options };
   delete rest.page;

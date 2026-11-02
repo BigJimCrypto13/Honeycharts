@@ -8,6 +8,7 @@ import { IMAGE_SLOTS, chooseImage, cleanImageSlot, emptyImages } from "./token-i
 export const LAUNCH_CAP = 200;
 export const PINNED_CAP = 80;
 export const TAPE_CAP = 40;
+export const MIN_CHART_POINTS = 8;
 export const GRADUATE_READY = 45;
 export const GRADUATE_FLOOR = 12;
 export const PUMP_V_SOL_START = 30;
@@ -132,6 +133,7 @@ export function launchFromJupiterToken(token, extra = {}) {
   row.trending = Boolean(extra.trending);
   row.source = "jupiter";
   row.change = changeFromJupiter(token);
+  row.volume = volumeFromJupiter(token);
   if (row.marketCapUsd != null) row.spark = [row.marketCapUsd];
   return row;
 }
@@ -153,6 +155,8 @@ export function launchFromBoardRow(row, extra = {}) {
   token.trending = Boolean(extra.trending);
   token.source = extra.source || "board";
   token.change = row.change || null;
+  token.volume = copyVolume(row.volume);
+  token.poolAddress = typeof row.poolAddress === "string" ? row.poolAddress : "";
   if (token.marketCapUsd != null) token.spark = [token.marketCapUsd];
   return token;
 }
@@ -193,6 +197,8 @@ export function mergeLaunch(prev, next) {
     trending: Boolean(prev.trending || next.trending),
     source: prev.source || next.source || "",
     change: next.change || prev.change || null,
+    volume: mergeVolume(prev.volume, next.volume),
+    poolAddress: prev.poolAddress || next.poolAddress || "",
     spark: pushSpark(prev.spark, sparkValue),
     signature: prev.signature || next.signature || "",
     metaFailed: Boolean(prev.metaFailed) && uri === (prev.uri || ""),
@@ -285,27 +291,115 @@ export function selectGraduated(list, limit = 80) {
 
 export function pickKing(list) {
   const rows = (Array.isArray(list) ? list : []).filter((token) => token && isValidCA(token.ca));
-  const open = rows.filter((token) => !token.graduated && typeof token.progress === "number");
-  open.sort((a, b) => b.progress - a.progress || (b.marketCapUsd || 0) - (a.marketCapUsd || 0));
-  if (open.length && open[0].progress >= 15) return open[0];
-  const ranked = rows.slice().sort((a, b) => (b.marketCapUsd || 0) - (a.marketCapUsd || 0));
-  return ranked.find((token) => (token.marketCapUsd || 0) > 0) || rows[0] || null;
+  const open = rows.filter((token) => {
+    return !token.graduated && typeof token.progress === "number" && token.progress < 100;
+  });
+  open.sort((a, b) => b.progress - a.progress || (b.marketCapUsd || 0) - (a.marketCapUsd || 0) || (b.createdAt || 0) - (a.createdAt || 0));
+  if (open.length) return { ...open[0], kingRole: "curve" };
+  const done = rows.filter((token) => token.graduated || (typeof token.progress === "number" && token.progress >= 100));
+  done.sort((a, b) => tradeHeat(b) - tradeHeat(a) || (b.marketCapUsd || 0) - (a.marketCapUsd || 0));
+  if (done.length) return { ...done[0], kingRole: "graduated" };
+  return null;
 }
 
 export function pushTape(tape, item, cap = TAPE_CAP) {
-  if (!item || typeof item.id !== "string" || !item.id) return Array.isArray(tape) ? tape : [];
-  const list = Array.isArray(tape) ? tape : [];
-  if (list.some((entry) => entry && entry.id === item.id)) return list;
+  if (!item || typeof item.id !== "string" || !item.id) return Array.isArray(tape) ? tape.slice() : [];
+  const list = Array.isArray(tape) ? tape.slice() : [];
+  const kind = item.kind === "migration" ? "migration" : "launch";
+  const ca = isValidCA(item.ca) ? item.ca : "";
   const symbol = clipText(item.symbol || "", 16);
+  const image = cleanImageSlot(item.image || "");
+  const at = finiteOrNull(item.at) || Date.now();
+  const key = tapeKey(kind, ca, item.id);
+  const index = list.findIndex((entry) => entry && tapeKey(entry.kind, entry.ca, entry.id) === key);
+  if (index >= 0) {
+    const prev = list[index];
+    list[index] = {
+      ...prev,
+      symbol: prev.symbol || symbol,
+      image: image || prev.image || "",
+      devBuySol: finiteOrNull(item.devBuySol) != null ? finiteOrNull(item.devBuySol) : prev.devBuySol,
+      at: Math.max(prev.at || 0, at),
+    };
+    return list.slice(0, Math.max(1, cap));
+  }
+  if (!ca && list.some((entry) => entry && entry.id === item.id)) return list.slice(0, Math.max(1, cap));
   const next = {
     id: item.id.slice(0, 160),
-    kind: item.kind === "migration" ? "migration" : "launch",
-    ca: isValidCA(item.ca) ? item.ca : "",
+    kind,
+    ca,
     symbol,
+    image,
     devBuySol: finiteOrNull(item.devBuySol),
-    at: finiteOrNull(item.at) || Date.now(),
+    at,
   };
   return [next, ...list].slice(0, Math.max(1, cap));
+}
+
+export function fillTape(tape, tokens, cap = TAPE_CAP) {
+  const list = Array.isArray(tape) ? tape.slice() : [];
+  const seen = new Set(list.map((entry) => tapeKey(entry && entry.kind, entry && entry.ca, entry && entry.id)));
+  const rows = (Array.isArray(tokens) ? tokens : []).slice().sort(byCreatedDesc);
+  for (const token of rows) {
+    if (!token || !isValidCA(token.ca)) continue;
+    const kind = token.graduated ? "migration" : "launch";
+    const key = tapeKey(kind, token.ca, "");
+    if (seen.has(key)) {
+      const index = list.findIndex((entry) => tapeKey(entry.kind, entry.ca, entry.id) === key);
+      const image = displayImage(token);
+      if (index >= 0 && image && !list[index].image) list[index] = { ...list[index], image };
+      continue;
+    }
+    seen.add(key);
+    list.push({
+      id: `${kind}:${token.ca}`,
+      kind,
+      ca: token.ca,
+      symbol: clipText(token.symbol || token.name || "", 16),
+      image: displayImage(token),
+      devBuySol: finiteOrNull(token.devBuySol),
+      at: finiteOrNull(token.createdAt) || 0,
+    });
+    if (list.length >= cap) break;
+  }
+  return list.slice(0, Math.max(1, cap));
+}
+
+export function closesFromOhlcv(payload) {
+  const list = payload && payload.data && payload.data.attributes && payload.data.attributes.ohlcv_list;
+  if (!Array.isArray(list)) return [];
+  const rows = [];
+  for (const row of list) {
+    if (!Array.isArray(row) || row.length < 5) continue;
+    const ts = Number(row[0]);
+    const close = Number(row[4]);
+    if (!Number.isFinite(ts) || !Number.isFinite(close) || close <= 0) continue;
+    rows.push([ts, close]);
+  }
+  rows.sort((a, b) => a[0] - b[0]);
+  return rows.map((row) => row[1]);
+}
+
+export function bestPoolAddress(payload) {
+  const pools = payload && Array.isArray(payload.data) ? payload.data : [];
+  let best = "";
+  let bestLiq = -1;
+  for (const pool of pools) {
+    const addr = pool && pool.attributes && pool.attributes.address;
+    if (typeof addr !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(addr)) continue;
+    const liq = Number(pool.attributes.reserve_in_usd);
+    const score = Number.isFinite(liq) ? liq : 0;
+    if (score >= bestLiq) {
+      best = addr;
+      bestLiq = score;
+    }
+  }
+  return best;
+}
+
+export function chartValues(values) {
+  const points = sparklinePoints(values);
+  return points.length >= MIN_CHART_POINTS ? points : [];
 }
 
 export function sparklinePoints(values) {
@@ -378,6 +472,8 @@ function blankLaunch(ca) {
     spark: [],
     signature: "",
     metaFailed: false,
+    volume: emptyVolume(),
+    poolAddress: "",
   };
 }
 
@@ -403,6 +499,57 @@ function changeFromJupiter(token) {
     return stats ? finiteOrNull(stats.priceChange) : null;
   };
   return { m5: read("stats5m"), h1: read("stats1h"), h6: read("stats6h"), h24: read("stats24h") };
+}
+
+function volumeFromJupiter(token) {
+  const out = emptyVolume();
+  const pairs = [["m5", "stats5m"], ["h1", "stats1h"], ["h6", "stats6h"], ["h24", "stats24h"]];
+  for (const [id, key] of pairs) {
+    const stats = token[key] && typeof token[key] === "object" ? token[key] : null;
+    if (!stats) continue;
+    const buy = finiteOrNull(stats.buyVolume);
+    const sell = finiteOrNull(stats.sellVolume);
+    if (buy == null && sell == null) continue;
+    const sum = (buy != null && buy >= 0 ? buy : 0) + (sell != null && sell >= 0 ? sell : 0);
+    if (sum >= 0) out[id] = sum;
+  }
+  return out;
+}
+
+function emptyVolume() {
+  return { m5: null, h1: null, h6: null, h24: null };
+}
+
+function copyVolume(volume) {
+  const out = emptyVolume();
+  if (!volume || typeof volume !== "object") return out;
+  for (const id of Object.keys(out)) {
+    const number = finiteOrNull(volume[id]);
+    if (number != null && number >= 0) out[id] = number;
+  }
+  return out;
+}
+
+function mergeVolume(prev, next) {
+  const out = copyVolume(prev);
+  const incoming = copyVolume(next);
+  for (const id of Object.keys(out)) {
+    if (incoming[id] != null) out[id] = incoming[id];
+  }
+  return out;
+}
+
+function tradeHeat(token) {
+  const volume = token && token.volume;
+  const traded = volume && (finiteOrNull(volume.h1) ?? finiteOrNull(volume.m5));
+  if (traded != null && traded > 0) return traded;
+  const liquidity = finiteOrNull(token && token.liquidity);
+  return liquidity != null && liquidity > 0 ? liquidity : 0;
+}
+
+function tapeKey(kind, ca, id) {
+  if (ca) return `${kind === "migration" ? "migration" : "launch"}:${ca}`;
+  return `id:${typeof id === "string" ? id : ""}`;
 }
 
 function timeMs(value) {

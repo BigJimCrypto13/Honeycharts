@@ -6,15 +6,22 @@
 import {
   fetchGeckoDexPools,
   fetchGeckoPools,
+  fetchJson,
   fetchJupiterBoard,
   fetchLatestProfiles,
+  geckoOhlcvUrl,
+  geckoTokenPoolsUrl,
 } from "./api.js";
 import { parseGeckoPools } from "./board.js";
 import {
   applyLaunchImage,
+  bestPoolAddress,
   capLaunches,
+  closesFromOhlcv,
   decorateLaunch,
+  displayImage,
   emptyLiveSnapshot,
+  fillTape,
   ingestLaunch,
   launchFromBoardRow,
   launchFromJupiterToken,
@@ -48,6 +55,11 @@ export function createLiveFeed({ storage, getSolPrice, onUpdate } = {}) {
   let metaActive = 0;
   const imageCache = readImageCache(storage);
   const metaSeen = new Set();
+  let chartCa = "";
+  let chartAt = 0;
+  let chartWait = 45000;
+  let chartPoints = [];
+  let chartBusy = false;
 
   function solPrice() {
     const value = typeof getSolPrice === "function" ? getSolPrice() : null;
@@ -57,6 +69,9 @@ export function createLiveFeed({ storage, getSolPrice, onUpdate } = {}) {
   function snapshot() {
     const px = solPrice();
     const decorated = launches.map((token) => decorateLaunch(token, px));
+    const king = pickKing(decorated);
+    if (king && king.ca === chartCa && chartPoints.length) king.chart = chartPoints.slice();
+    tape = fillTape(tape, decorated);
     return {
       status,
       solPrice: px,
@@ -67,7 +82,7 @@ export function createLiveFeed({ storage, getSolPrice, onUpdate } = {}) {
         hot: selectGraduating(decorated, 80),
         done: selectGraduated(decorated, 80),
       },
-      king: pickKing(decorated),
+      king,
       tape,
     };
   }
@@ -88,7 +103,48 @@ export function createLiveFeed({ storage, getSolPrice, onUpdate } = {}) {
     emitTimer = 0;
     if (!dirty) return;
     dirty = false;
-    if (typeof onUpdate === "function") onUpdate(snapshot());
+    const snap = snapshot();
+    if (typeof onUpdate === "function") onUpdate(snap);
+    refreshKingChart(snap.king);
+  }
+
+  async function refreshKingChart(king) {
+    if (stopped || chartBusy || !king || !isMint(king.ca)) return;
+    if (king.ca === chartCa && Date.now() - chartAt < chartWait) return;
+    chartBusy = true;
+    const ca = king.ca;
+    try {
+      const points = await loadCloses(king);
+      if (stopped || ca !== king.ca) return;
+      chartCa = ca;
+      chartAt = Date.now();
+      chartWait = 45000;
+      chartPoints = points;
+      emit(false);
+    } catch {
+      if (chartCa !== ca) chartPoints = [];
+      chartCa = ca;
+      chartAt = Date.now();
+      chartWait = 8000;
+    } finally {
+      chartBusy = false;
+    }
+  }
+
+  async function loadCloses(token) {
+    let pool = geckoOhlcvUrl(token.poolAddress) ? token.poolAddress : "";
+    if (!pool) {
+      const data = await fetchJson(geckoTokenPoolsUrl(token.ca), { ttl: 60000 });
+      pool = bestPoolAddress(data);
+    }
+    const url = geckoOhlcvUrl(pool);
+    if (!url) return [];
+    const payload = await fetchJson(url, { ttl: 45000 });
+    return closesFromOhlcv(payload);
+  }
+
+  function isMint(value) {
+    return typeof value === "string" && value.length >= 32;
   }
 
   function remember(token) {
@@ -156,6 +212,7 @@ export function createLiveFeed({ storage, getSolPrice, onUpdate } = {}) {
         kind: parsed.token.graduated ? "migration" : "launch",
         ca: parsed.token.ca,
         symbol: parsed.token.symbol || parsed.token.name || "NEW",
+        image: displayImage(parsed.token),
         devBuySol: parsed.token.devBuySol,
         at: parsed.token.createdAt,
       });
