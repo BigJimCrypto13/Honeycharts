@@ -9,20 +9,40 @@ import {
   HIVE_LEAD_LOCAL,
   RESERVED_USERNAMES,
   SAMPLE_PROFILE,
+  CROSS_BROWSER_LINK_ERROR,
+  OTP_RESEND_SECONDS,
+  PHANTOM_DOWNLOAD_URL,
+  SOLFLARE_DOWNLOAD_URL,
+  authCodeType,
+  authReturnCleanPath,
   cleanProfileDraft,
+  cleanWelcomeDraft,
+  connectChoices,
   followCountLabel,
   friendlyAuthError,
+  friendlyCallbackMessage,
+  headerWalletNote,
   hiveLeadFor,
+  isLikelyMobile,
   isSchemaOffline,
   localPreviewKind,
   mergeHiveLists,
+  needsWelcome,
+  otpResendState,
+  parseAuthReturn,
   parseSongUrl,
+  previewForcesPhone,
+  readPendingUsername,
+  rememberUsername,
   safeAvatarUrl,
   solanaAddressFromUser,
   songPlayerPlan,
+  usernameStatus,
   validateAvatarFile,
   validateEmail,
+  validateOtpCode,
   validateUsername,
+  walletBrowseUrl,
 } from "../js/account-logic.js";
 
 const BONK = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
@@ -177,7 +197,12 @@ describe("account routes and flags", () => {
     assert.equal(profilePath("/Honeycharts/", "big jim"), "/Honeycharts/?u=big%20jim");
     assert.equal(editProfilePath("/Honeycharts/"), "/Honeycharts/?view=edit-profile");
     assert.equal(localPreviewKind({ hostname: "127.0.0.1", search: "?preview=profile" }), "profile");
+    assert.equal(localPreviewKind({ hostname: "127.0.0.1", search: "?preview=code" }), "code");
+    assert.equal(localPreviewKind({ hostname: "127.0.0.1", search: "?preview=welcome" }), "welcome");
+    assert.equal(localPreviewKind({ hostname: "127.0.0.1", search: "?preview=wallets" }), "wallets");
     assert.equal(localPreviewKind({ hostname: "bigjimcrypto13.github.io", search: "?preview=profile" }), "");
+    assert.equal(previewForcesPhone({ hostname: "127.0.0.1", search: "?preview=wallets&phone=1" }), true);
+    assert.equal(previewForcesPhone({ hostname: "bigjimcrypto13.github.io", search: "?phone=1" }), false);
   });
 
   it("keeps fees, launch, and the Google switch where they are", () => {
@@ -192,12 +217,30 @@ describe("account routes and flags", () => {
     const swap = readFileSync(new URL("../js/swap.js", import.meta.url), "utf8");
     assert.match(accounts, /signInWithWeb3\(\{/);
     assert.match(accounts, /chain: "solana"/);
+    assert.match(accounts, /flowType:\s*"implicit"/);
+    assert.doesNotMatch(accounts, /flowType:\s*"pkce"/);
     assert.match(ui, /GOOGLE_AUTH_ENABLED/);
     assert.match(ui, /Join the hive/);
+    assert.match(ui, /Welcome to the hive/);
+    assert.match(ui, /Email me a code instead/);
+    assert.match(ui, /verifyOtp/);
+    assert.match(ui, /type: authCodeType\(authView\.mode\)/);
     assert.match(ui, /text: "Play"/);
     assert.doesNotMatch(ui, /autoplay/);
     assert.match(swap, /enableWalletPassthrough: false/);
     assert.doesNotMatch(accounts + ui, /signTransaction|service_role/);
+    const authWallet = readFileSync(new URL("../js/auth-wallet.js", import.meta.url), "utf8");
+    const wallet = readFileSync(new URL("../js/wallet.js", import.meta.url), "utf8");
+    const launch = readFileSync(new URL("../js/launch-ui.js", import.meta.url), "utf8");
+    const render = readFileSync(new URL("../js/render.js", import.meta.url), "utf8");
+    assert.match(authWallet, /listStandardLoginWallets/);
+    assert.doesNotMatch(authWallet, /signTransaction|signAndSendTransaction|signMessage/);
+    assert.match(wallet, /listStandardLoginWallets/);
+    assert.match(wallet, /solana:signIn/);
+    assert.match(launch, /renderLaunchWallets/);
+    assert.match(render, /renderTradeWallets/);
+    assert.equal(authCodeType("signup"), "signup");
+    assert.equal(authCodeType("email"), "email");
   });
 
   it("recognizes a missing table and a wallet address on the user", () => {
@@ -223,5 +266,100 @@ describe("account routes and flags", () => {
     assert.match(followCountLabel(12, 3), /12 followers · 3 following/);
     assert.equal(SAMPLE_PROFILE.username, "bigjim");
     assert.equal(parseSongUrl(SAMPLE_PROFILE.songUrl).song.kind, "youtube");
+  });
+});
+
+describe("same-page sign-in and wallet choices", () => {
+  const page = "https://bigjimcrypto13.github.io/Honeycharts/?u=bigjim";
+  const origin = "https://bigjimcrypto13.github.io";
+
+  it("checks a 6-digit code and the resend countdown", () => {
+    assert.deepEqual(validateOtpCode("123456"), { ok: true, code: "123456" });
+    assert.deepEqual(validateOtpCode(" 123 456 "), { ok: true, code: "123456" });
+    assert.equal(validateOtpCode("12345").ok, false);
+    assert.equal(validateOtpCode("12345a").ok, false);
+    assert.equal(validateOtpCode(null).ok, false);
+    assert.equal(otpResendState(OTP_RESEND_SECONDS).label, "Resend in 60s");
+    assert.equal(otpResendState(0).canResend, true);
+    assert.equal(otpResendState(0).label, "Resend code");
+    assert.equal(otpResendState(-3).canResend, true);
+  });
+
+  it("describes username availability and the welcome draft", () => {
+    const checked = { ok: true, username: "bigjim" };
+    assert.equal(usernameStatus(checked, null).state, "checking");
+    assert.equal(usernameStatus(checked, { taken: true }).text, "That username is taken.");
+    assert.match(usernameStatus(checked, {}).text, /bigjim is available/);
+    assert.equal(usernameStatus({ ok: false, error: "Pick a username." }, null).state, "invalid");
+    assert.equal(needsWelcome(null), true);
+    assert.equal(needsWelcome({ username: "" }), true);
+    assert.equal(needsWelcome({ username: "bigjim" }), false);
+    const welcome = cleanWelcomeDraft({
+      username: "BigJim",
+      displayName: "Big Jim",
+      songUrl: "https://cdn.example.com/bee.mp3",
+      songTitle: "Flight",
+    });
+    assert.equal(welcome.ok, true);
+    assert.equal(welcome.values.username, "bigjim");
+    assert.equal(welcome.values.songUrl, "https://cdn.example.com/bee.mp3");
+    assert.equal(cleanWelcomeDraft({ username: "no", songUrl: "notaurl" }).ok, false);
+    const store = new Map();
+    const storage = {
+      setItem(key, value) { store.set(key, value); },
+      getItem(key) { return store.get(key) || ""; },
+    };
+    assert.equal(rememberUsername(storage, "BigJim"), "bigjim");
+    assert.equal(readPendingUsername(storage), "bigjim");
+    assert.equal(rememberUsername(storage, "no"), "");
+  });
+
+  it("reads email links and errors instead of ignoring them", () => {
+    const expired = parseAuthReturn(`${page}&error=access_denied&error_description=Email+link+is+invalid+or+has+expired`);
+    assert.equal(expired.kind, "error");
+    assert.match(expired.message, /expired/);
+    assert.match(friendlyCallbackMessage("otp_expired"), /6-digit code/);
+    assert.equal(parseAuthReturn(`${page}&code=abc123`).kind, "code");
+    assert.equal(parseAuthReturn(`${page}#access_token=abc&refresh_token=def`).kind, "implicit");
+    const hashed = parseAuthReturn(`${page}&token_hash=abc&type=signup`);
+    assert.deepEqual(hashed, { kind: "token_hash", tokenHash: "abc", type: "signup" });
+    assert.equal(parseAuthReturn(page).kind, "none");
+    assert.equal(
+      authReturnCleanPath(`https://bigjimcrypto13.github.io/Honeycharts/?code=abc&error_description=no#access_token=xyz`),
+      "/Honeycharts/",
+    );
+    assert.equal(authReturnCleanPath(`https://bigjimcrypto13.github.io/Honeycharts/?ca=${BONK}#${BONK}`), `/Honeycharts/?ca=${BONK}#${BONK}`);
+    assert.match(CROSS_BROWSER_LINK_ERROR, /different browser/);
+    assert.match(friendlyAuthError({ message: "Token has expired or is invalid" }), /code is not valid/);
+  });
+
+  it("always offers Phantom and Solflare, with install links or mobile deep links", () => {
+    assert.equal(isLikelyMobile("Mozilla/5.0 (X11; CrOS x86_64)"), false);
+    assert.equal(isLikelyMobile("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile"), true);
+    const desktop = connectChoices([], { mobile: false, pageUrl: page });
+    assert.equal(desktop.brands[0].action, "install");
+    assert.equal(desktop.brands[0].href, PHANTOM_DOWNLOAD_URL);
+    assert.equal(desktop.brands[1].href, SOLFLARE_DOWNLOAD_URL);
+    assert.match(desktop.brands[0].note, /not installed/);
+    assert.match(desktop.brands[0].note, /email/);
+    assert.match(headerWalletNote(desktop), /Install Phantom or Solflare/);
+    const phone = connectChoices([], { mobile: true, pageUrl: page });
+    assert.equal(phone.brands[0].action, "browse");
+    assert.equal(
+      phone.brands[0].href,
+      `https://phantom.app/ul/browse/${encodeURIComponent(page)}?ref=${encodeURIComponent(origin)}`,
+    );
+    assert.equal(
+      walletBrowseUrl("solflare", page),
+      `https://solflare.com/ul/v1/browse/${encodeURIComponent(page)}?ref=${encodeURIComponent(origin)}`,
+    );
+    assert.equal(walletBrowseUrl("phantom", "javascript:alert(1)"), "");
+    const installed = connectChoices(["Phantom", "Backpack"], { mobile: false, pageUrl: page });
+    assert.equal(installed.brands[0].action, "sign-in");
+    assert.equal(installed.brands[1].action, "install");
+    assert.equal(installed.extras[0].name, "Backpack");
+    assert.equal(installed.extras[0].action, "sign-in");
+    assert.equal(headerWalletNote(installed), "No wallet in this browser. Install Phantom or Solflare, or join with email.");
+    assert.equal(headerWalletNote(phone), "Opens the wallet app and loads this page there, where sign-in can use the wallet.");
   });
 });

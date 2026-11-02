@@ -1,7 +1,9 @@
-// Wallet Standard, Phantom, and Solflare only. Called from the Launch tab
-// after the user clicks Connect. This file never reads a secret key.
+// Wallet Standard, Phantom, and Solflare. Launch signing stays behind
+// Connect wallet to launch. Login discovery only forwards a sign-in
+// message to the wallet. This file never reads a secret key.
 
 const standardWallets = [];
+const loginStandardWallets = [];
 let listening = false;
 
 function listenForWallets() {
@@ -13,7 +15,9 @@ function listenForWallets() {
     try {
       api({
         register(wallet) {
-          if (!wallet || !allowedName(wallet.name)) return;
+          if (!wallet) return;
+          rememberLoginWallet(wallet);
+          if (!allowedName(wallet.name)) return;
           if (standardWallets.some((item) => item.name === wallet.name)) return;
           standardWallets.push(wallet);
         },
@@ -119,4 +123,68 @@ function unsignedBytes(transaction) {
 
 function signedBytes(transaction) {
   return transaction.serialize();
+}
+
+export function listStandardLoginWallets() {
+  listenForWallets();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("wallet-standard:app-ready"));
+  }
+  return loginStandardWallets.map((wallet) => ({ name: String(wallet.name), wallet }));
+}
+
+// Adapts a Wallet Standard wallet to the shape Supabase sign-in expects.
+// It signs a login message only. It does not sign a transaction.
+export function standardLoginProvider(wallet) {
+  if (!wallet || !wallet.features) return null;
+  const signInFeature = wallet.features["solana:signIn"];
+  if (signInFeature && typeof signInFeature.signIn === "function") {
+    return {
+      async connect() {
+        const connect = wallet.features["standard:connect"];
+        if (connect && typeof connect.connect === "function") await connect.connect();
+      },
+      signIn(input) {
+        return signInFeature.signIn(input);
+      },
+    };
+  }
+  const signMessageFeature = wallet.features["solana:signMessage"];
+  if (!signMessageFeature || typeof signMessageFeature.signMessage !== "function") return null;
+  let account = null;
+  const provider = {
+    publicKey: {
+      toBase58() {
+        return account && typeof account.address === "string" ? account.address : "";
+      },
+    },
+    async connect() {
+      const connect = wallet.features["standard:connect"];
+      const result = connect && typeof connect.connect === "function" ? await connect.connect() : null;
+      const listed = result && Array.isArray(result.accounts) ? result.accounts : wallet.accounts;
+      const accounts = Array.isArray(listed) ? listed : [];
+      account = accounts.find((item) => Array.isArray(item.chains) && item.chains.some((chain) => String(chain).startsWith("solana:"))) || accounts[0] || null;
+      if (!account || typeof account.address !== "string") throw new Error("The wallet did not share a public address.");
+      return { publicKey: provider.publicKey };
+    },
+    async signMessage(message) {
+      if (!account) await provider.connect();
+      const outputs = await signMessageFeature.signMessage({ account, message });
+      const signature = outputs && outputs[0] && outputs[0].signature;
+      if (!(signature instanceof Uint8Array)) throw new Error("The wallet did not sign the login message.");
+      return signature;
+    },
+  };
+  return provider;
+}
+
+function rememberLoginWallet(wallet) {
+  if (!wallet.features) return;
+  const chains = Array.isArray(wallet.chains) ? wallet.chains : [];
+  if (!chains.some((chain) => String(chain).startsWith("solana:"))) return;
+  if (!wallet.features["solana:signIn"] && !wallet.features["solana:signMessage"]) return;
+  const name = String(wallet.name || "");
+  if (!name) return;
+  if (loginStandardWallets.some((item) => item.name === name)) return;
+  loginStandardWallets.push(wallet);
 }

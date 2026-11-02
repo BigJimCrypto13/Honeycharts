@@ -1,4 +1,5 @@
 import { el } from "./dom.js";
+import { renderLaunchWallets } from "./wallet-connect-ui.js";
 import { launchFeeConfig } from "./config.js";
 import { describeLaunch, imageDownloadName } from "./launch-form.js";
 import { PUMP_PRIORITY_FEE_SOL } from "./launch-tx.js";
@@ -146,26 +147,14 @@ function reviewPanel(state, actions) {
     if (state.busy || !state.mainnetConfirmed) sign.disabled = true;
     panel.append(sign);
   } else {
-    const wallets = state.wallets || [];
-    if (!wallets.length) {
-      const look = el("button", {
-        className: "primary",
-        text: state.busy ? "Looking for a wallet…" : "Connect wallet to launch",
-        attrs: { type: "button" },
-        on: { click: () => actions.refreshLaunchWallets() },
-      });
-      if (state.busy) look.disabled = true;
-      panel.append(look);
-    } else if (wallets.length === 1) {
-      panel.append(connectButton(state, wallets[0], "Connect wallet to launch", actions));
-    } else {
-      for (const choice of wallets) {
-        panel.append(connectButton(state, choice, `Connect ${choice.name} to launch`, actions));
-      }
-    }
-    panel.append(el("p", {
-      className: "fine",
-      text: "Phantom or Solflare only. You sign in that wallet. Honeycharts never sees your keys.",
+    panel.append(renderLaunchWallets({
+      wallets: state.wallets || [],
+      busy: state.busy,
+      onConnect: (choice) => {
+        if (choice) actions.connectLaunch(choice);
+        else actions.refreshLaunchWallets();
+      },
+      onEmail: () => actions.openSignIn && actions.openSignIn("create"),
     }));
   }
   panel.append(el("button", {
@@ -175,17 +164,6 @@ function reviewPanel(state, actions) {
     on: { click: () => actions.editLaunch() },
   }));
   return panel;
-}
-
-function connectButton(state, choice, text, actions) {
-  const connect = el("button", {
-    className: "primary",
-    text: state.busy ? "Waiting for your wallet…" : text,
-    attrs: { type: "button" },
-    on: { click: () => actions.connectLaunch(choice) },
-  });
-  if (state.busy) connect.disabled = true;
-  return connect;
 }
 
 function check(label, id, checked, help, onChange) {

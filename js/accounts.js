@@ -27,7 +27,11 @@ async function importClient() {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      flowType: "pkce",
+      // implicit puts the session in the link hash, so the link works in a
+      // different browser than the one that asked for it. The 6-digit code
+      // path does not use this redirect. PKCE links only work in the original
+      // browser and failed silently when the email was opened on a phone.
+      flowType: "implicit",
     },
   });
 }
@@ -95,6 +99,13 @@ export function signInWithSolanaWallet(client, provider) {
     statement: LOGIN_STATEMENT,
     wallet: provider,
   }));
+}
+
+export async function queryUsername(client, username) {
+  const { data, error } = await client.from("profiles").select("id").eq("username", username).maybeSingle();
+  if (isSchemaOffline(error)) return { offline: true };
+  if (error) return { error: true };
+  return { taken: Boolean(data && data.id), id: data && data.id ? data.id : "" };
 }
 
 export async function fetchProfileByUsername(client, username) {

@@ -4,17 +4,29 @@
 import { AUTH_SITE_URL, GOOGLE_AUTH_ENABLED, SUPABASE_URL } from "./auth-config.js";
 import {
   ACCOUNTS_OFFLINE,
+  CROSS_BROWSER_LINK_ERROR,
+  OTP_RESEND_SECONDS,
   SAMPLE_PROFILE,
+  authCodeType,
+  authReturnCleanPath,
   cleanProfileDraft,
+  cleanWelcomeDraft,
   followCountLabel,
   friendlyAuthError,
   hiveLeadFor,
   isSchemaOffline,
+  needsWelcome,
+  otpResendState,
+  parseAuthReturn,
   parseSongUrl,
+  readPendingUsername,
+  rememberUsername,
   safeAvatarUrl,
   supabaseHostFrom,
+  usernameStatus,
   validateAvatarFile,
   validateEmail,
+  validateOtpCode,
   validatePassword,
   validateUsername,
 } from "./account-logic.js";
@@ -27,6 +39,7 @@ import {
   loadSupabase,
   probeSchema,
   pushHiveMint,
+  queryUsername,
   removeHiveMint,
   replaceRemoteHive,
   saveProfile,
@@ -37,6 +50,7 @@ import {
   uploadAvatar,
 } from "./accounts.js";
 import { listLoginWallets } from "./auth-wallet.js";
+import { renderAccountWallets, renderHeaderWallets } from "./wallet-connect-ui.js";
 import { el, clear, externalLink } from "./dom.js";
 import { appBase, editProfilePath, profilePath, tokenPath, walletPath } from "./paths.js";
 
@@ -55,6 +69,12 @@ export function startAccounts(options) {
   let syncedFor = "";
   let pageTicket = 0;
   let dialog = null;
+  let resendTimer = 0;
+  let usernameTimer = 0;
+  let usernameTicket = 0;
+  let announceSignIn = false;
+  let linkToasted = false;
+  let authView = { tab: "create", step: "form", email: "", mode: "signup", username: "" };
 
   function enqueue(task) {
     queue = queue.then(task, task);
@@ -74,12 +94,17 @@ export function startAccounts(options) {
     if (!slot) return;
     clear(slot);
     if (!user()) {
-      slot.append(el("button", {
+      const cluster = el("div", { className: "header-account" });
+      const top = el("div", { className: "header-account-row" });
+      top.append(el("button", {
         className: "join-hive primary",
         text: "Join the hive",
         attrs: { type: "button" },
-        on: { click: openSignIn },
+        on: { click: () => openSignIn("create") },
       }));
+      top.append(renderHeaderWallets(onWalletReady));
+      cluster.append(top);
+      slot.append(cluster);
       return;
     }
     const profile = state.profile;
@@ -118,13 +143,15 @@ export function startAccounts(options) {
   }
 
   async function boot() {
+    const authReturn = typeof location === "undefined" ? { kind: "none" } : parseAuthReturn(location.href);
     paintHeader();
+    openPreview();
     try {
       state.client = await loadSupabase();
     } catch {
       state.schema = "unreachable";
       paintHeader();
-      if (options.preview === "signin") openSignIn();
+      openPreview();
       return;
     }
     state.client.auth.onAuthStateChange((event, session) => {
@@ -132,13 +159,30 @@ export function startAccounts(options) {
         state.session = session;
         return;
       }
+      announceSignIn = event === "SIGNED_IN";
       state.session = session;
       enqueue(() => afterAuth());
     });
     const { data } = await state.client.auth.getSession();
     if (!state.session) state.session = data.session || null;
     await enqueue(() => afterAuth());
-    if (options.preview === "signin") openSignIn();
+    await consumeAuthReturn(authReturn);
+    openPreview();
+  }
+
+  function openPreview() {
+    if (!options.preview || options.preview === "profile" || options.preview === "edit") return;
+    if (dialog) return;
+    if (options.preview === "code") {
+      authView = { tab: "create", step: "code", email: "bee@hive.test", mode: "signup", username: "bigjim" };
+      mountAuth();
+      return;
+    }
+    if (options.preview === "welcome") {
+      openWelcome();
+      return;
+    }
+    openSignIn(options.preview === "wallets" ? "signin" : "create");
   }
 
   async function afterAuth() {
@@ -154,6 +198,7 @@ export function startAccounts(options) {
     state.schema = result.schema === "ready" ? "ready" : result.schema === "offline" ? "offline" : "unreachable";
     state.profile = result.profile;
     paintHeader();
+    presentSession();
     if (state.schema !== "ready" || syncedFor === user().id) return;
     syncedFor = user().id;
     const synced = await syncHive(state.client, user().id, hive.list());
@@ -194,28 +239,100 @@ export function startAccounts(options) {
     });
   }
 
-  function openSignIn() {
-    closeDialog();
-    dialog = buildDialog();
-    document.body.append(dialog);
-    if (typeof dialog.showModal === "function") dialog.showModal();
+  function presentSession() {
+    if (options.preview || !user()) return;
+    const showWelcome = state.schema === "ready" && needsWelcome(state.profile);
+    if (showWelcome) {
+      openWelcome();
+      return;
+    }
+    if (dialog && dialog.dataset.purpose === "auth") closeDialog();
+    if (announceSignIn && !linkToasted) notify("Signed in.");
   }
 
-  function closeDialog() {
-    if (!dialog) return;
-    if (dialog.open && typeof dialog.close === "function") dialog.close();
-    dialog.remove();
-    dialog = null;
+  async function consumeAuthReturn(parsed) {
+    if (!parsed || parsed.kind === "none" || !state.client) return;
+    try {
+      if (parsed.kind === "error") {
+        notify(parsed.message);
+        cleanAuthUrl();
+        return;
+      }
+      if (parsed.kind === "code") {
+        const { error } = await state.client.auth.exchangeCodeForSession(parsed.code);
+        cleanAuthUrl();
+        notify(error ? CROSS_BROWSER_LINK_ERROR : "Signed in.");
+        return;
+      }
+      if (parsed.kind === "token_hash") {
+        const { error } = await state.client.auth.verifyOtp({
+          token_hash: parsed.tokenHash,
+          type: parsed.type,
+        });
+        cleanAuthUrl();
+        notify(error ? friendlyAuthError(error) : "Signed in.");
+        return;
+      }
+      if (parsed.kind === "implicit") {
+        cleanAuthUrl();
+        notify(user()
+          ? "Signed in."
+          : "That sign-in link did not finish. Enter the 6-digit code from the email on this page.");
+      }
+    } catch (error) {
+      cleanAuthUrl();
+      notify(friendlyAuthError(error));
+    }
   }
 
-  function buildDialog() {
-    const node = el("dialog", {
-      className: "account-dialog",
-      attrs: { "aria-labelledby": "account-title" },
-    });
+  function notify(text) {
+    linkToasted = true;
+    if (options.setStatus && text) options.setStatus(text);
+  }
+
+  function cleanAuthUrl() {
+    if (typeof location === "undefined") return;
+    const next = authReturnCleanPath(location.href);
+    const current = `${location.pathname}${location.search}${location.hash}`;
+    if (!next || next === current) return;
+    history.replaceState(null, "", next);
+  }
+
+  function openSignIn(tab) {
+    authView = {
+      tab: tab === "signin" ? "signin" : "create",
+      step: "form",
+      email: "",
+      mode: "signup",
+      username: "",
+    };
+    mountAuth();
+  }
+
+  function mountAuth() {
+    if (!dialog || dialog.dataset.purpose !== "auth") {
+      closeDialog();
+      dialog = el("dialog", {
+        className: "account-dialog",
+        attrs: { "aria-labelledby": "account-title" },
+      });
+      dialog.dataset.purpose = "auth";
+      wireDialog(dialog);
+      document.body.append(dialog);
+      if (typeof dialog.showModal === "function") dialog.showModal();
+    }
+    paintAuth();
+  }
+
+  function paintAuth() {
+    clearInterval(resendTimer);
+    resendTimer = 0;
+    clearTimeout(usernameTimer);
+    usernameTimer = 0;
+    clear(dialog);
     const card = el("div", { className: "account-card" });
     card.append(el("div", { className: "account-card-head" }, [
-      el("h2", { attrs: { id: "account-title" }, text: "Join the hive" }),
+      el("h2", { attrs: { id: "account-title" }, text: authView.step === "code" ? "Enter your code" : "Join the hive" }),
       el("button", {
         className: "ghost",
         text: "Close",
@@ -225,177 +342,386 @@ export function startAccounts(options) {
     ]));
     card.append(el("p", {
       className: "muted",
-      text: "Sign in with email, or with Phantom or Solflare. A Solana sign-in only signs a login message. It does not send a transaction or move tokens.",
+      text: "Create an account with email, or sign in with Phantom or Solflare. A Solana sign-in only signs a login message. It does not send a transaction or move tokens.",
     }));
-    if (state.schema === "offline" || state.schema === "unreachable" || !state.client) {
+    if (state.schema === "offline" || state.schema === "unreachable") {
       card.append(el("p", { className: "banner", text: ACCOUNTS_OFFLINE }));
     }
-    const message = el("p", { className: "account-message", attrs: { role: "status" } });
+    const message = el("p", { className: "account-message", attrs: { id: "account-message", role: "status" } });
+    if (authView.step === "code") card.append(codePanel(message));
+    else card.append(authTabs(), authForm(authView.tab));
     card.append(message);
-    if (!state.client) {
-      node.append(card);
-      node.addEventListener("cancel", (event) => {
-        event.preventDefault();
-        closeDialog();
-      });
-      node.addEventListener("click", (event) => {
-        if (event.target === node) closeDialog();
-      });
-      return node;
-    }
-    card.append(emailForm(message));
-    card.append(passwordForm(message));
-    card.append(solanaBlock(message));
+    card.append(renderAccountWallets({ onReady: onWalletReady, onEmail: () => openSignIn("create") }));
     if (GOOGLE_AUTH_ENABLED) card.append(googleButton(message));
-    node.append(card);
-    node.addEventListener("cancel", (event) => {
-      event.preventDefault();
-      closeDialog();
-    });
-    node.addEventListener("click", (event) => {
-      if (event.target === node) closeDialog();
-    });
-    return node;
+    dialog.append(card);
+    if (authView.step === "code") startResendCountdown();
+    if (options.preview === "wallets") {
+      const block = dialog.querySelector("#wallet-connect");
+      const card = dialog.querySelector(".account-card");
+      if (block && card) card.scrollTop = Math.max(0, block.offsetTop - 120);
+      return;
+    }
+    const focus = dialog.querySelector(authView.step === "code" ? "#account-code" : "input");
+    if (focus) focus.focus();
   }
 
-  function emailForm(message) {
-    const form = el("form", { className: "account-form" });
-    const input = el("input", {
-      attrs: { id: "account-email", type: "email", autocomplete: "email", maxlength: "254", required: "true" },
+  function authTabs() {
+    const tabs = el("div", { className: "account-tabs", attrs: { role: "tablist", "aria-label": "Account" } });
+    tabs.append(authTab("create", "Create account"));
+    tabs.append(authTab("signin", "Sign in"));
+    return tabs;
+  }
+
+  function authTab(tab, text) {
+    const selected = authView.tab === tab;
+    return el("button", {
+      className: "account-tab",
+      text,
+      attrs: { type: "button", role: "tab", "aria-selected": selected ? "true" : "false" },
+      on: {
+        click: () => {
+          authView.tab = tab;
+          authView.step = "form";
+          paintAuth();
+        },
+      },
     });
-    form.append(labeled("Email", input));
-    form.append(el("button", { className: "primary", text: "Email me a sign-in link", attrs: { type: "submit" } }));
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const checked = validateEmail(input.value);
-      if (!checked.ok) {
-        message.textContent = checked.error;
-        return;
-      }
-      message.textContent = "Sending the sign-in link…";
-      const { error } = await state.client.auth.signInWithOtp({
-        email: checked.email,
-        options: { emailRedirectTo: authReturnUrl() },
+  }
+
+  function authForm(tab) {
+    const creating = tab !== "signin";
+    const form = el("form", { className: "account-form" });
+    let username = null;
+    let usernameNote = null;
+    if (creating) {
+      username = el("input", {
+        attrs: { id: "account-username", type: "text", autocomplete: "username", maxlength: "20", required: "true" },
       });
-      message.textContent = error
-        ? friendlyAuthError(error)
-        : "Check your email for the sign-in link. It opens Honey Charts in this browser.";
+      usernameNote = el("p", { className: "fine", attrs: { id: "username-status", role: "status" } });
+      form.append(fieldBlock("Username", username, "3–20 characters. Letters, numbers, and underscores."));
+      form.append(usernameNote);
+      username.addEventListener("input", () => scheduleUsernameCheck(username, usernameNote));
+    }
+    const email = el("input", {
+      attrs: {
+        id: creating ? "account-email" : "account-signin-email",
+        type: "email",
+        autocomplete: "email",
+        maxlength: "254",
+        required: "true",
+      },
+    });
+    const password = el("input", {
+      attrs: {
+        id: creating ? "account-password" : "account-signin-password",
+        type: "password",
+        autocomplete: creating ? "new-password" : "current-password",
+        maxlength: "72",
+        required: "true",
+      },
+    });
+    form.append(fieldBlock("Email", email, ""));
+    form.append(fieldBlock("Password", password, creating ? "At least 8 characters." : ""));
+    form.append(el("button", {
+      className: "primary",
+      text: creating ? "Create account" : "Sign in",
+      attrs: { type: "submit" },
+    }));
+    form.append(el("button", {
+      className: "text-button",
+      text: "Email me a code instead",
+      attrs: { type: "button" },
+      on: { click: () => sendEmailCode(email, username) },
+    }));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (creating) submitCreate(username, email, password);
+      else submitSignIn(email, password);
     });
     return form;
   }
 
-  function passwordForm(message) {
-    const wrap = el("div", { className: "account-password" });
-    const password = el("input", {
-      attrs: { id: "account-password", type: "password", autocomplete: "current-password", maxlength: "72" },
-    });
-    const email = el("input", {
-      attrs: { id: "account-password-email", type: "email", autocomplete: "username", maxlength: "254" },
-    });
-    let open = false;
-    const panel = el("div", { className: "account-form" });
-    const toggle = el("button", {
-      className: "ghost",
-      text: "Use a password instead",
-      attrs: { type: "button", "aria-expanded": "false" },
-      on: {
-        click: () => {
-          open = !open;
-          toggle.setAttribute("aria-expanded", open ? "true" : "false");
-          panel.hidden = !open;
-        },
+  function codePanel(message) {
+    const form = el("form", { className: "account-form" });
+    form.append(el("p", { text: `Enter the 6-digit code sent to ${authView.email}.` }));
+    const input = el("input", {
+      className: "otp-input",
+      attrs: {
+        id: "account-code",
+        inputmode: "numeric",
+        autocomplete: "one-time-code",
+        maxlength: "6",
+        pattern: "[0-9]{6}",
+        "aria-label": "6-digit code",
       },
     });
-    panel.hidden = true;
-    panel.append(labeled("Email", email));
-    panel.append(labeled("Password", password));
-    const row = el("div", { className: "account-actions" });
-    row.append(el("button", {
-      className: "primary",
-      text: "Sign in",
-      attrs: { type: "button" },
-      on: { click: () => passwordAuth("sign-in", email, password, message) },
-    }));
-    row.append(el("button", {
+    form.append(labeled("6-digit code", input));
+    form.append(el("button", { className: "primary", text: "Confirm code", attrs: { type: "submit" } }));
+    const resend = el("button", {
       className: "ghost",
-      text: "Create account",
+      text: otpResendState(OTP_RESEND_SECONDS).label,
+      attrs: { type: "button", id: "resend-code" },
+      on: { click: () => resendCode(message) },
+    });
+    resend.disabled = true;
+    form.append(resend);
+    form.append(el("button", {
+      className: "text-button",
+      text: "Use a different email",
       attrs: { type: "button" },
-      on: { click: () => passwordAuth("sign-up", email, password, message) },
+      on: {
+        click: () => {
+          authView.step = "form";
+          paintAuth();
+        },
+      },
     }));
-    panel.append(row);
-    wrap.append(toggle, panel);
-    return wrap;
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      verifyCode(input, message);
+    });
+    return form;
   }
 
-  async function passwordAuth(mode, emailInput, passwordInput, message) {
+  function scheduleUsernameCheck(input, status) {
+    clearTimeout(usernameTimer);
+    const checked = validateUsername(input.value);
+    if (!input.value.trim()) {
+      status.textContent = "";
+      return;
+    }
+    if (!checked.ok) {
+      status.textContent = checked.error;
+      return;
+    }
+    status.textContent = usernameStatus(checked, null).text;
+    const ticket = ++usernameTicket;
+    usernameTimer = setTimeout(async () => {
+      if (!state.client) {
+        if (ticket !== usernameTicket) return;
+        status.textContent = "Looks valid. Availability is checked when accounts are online.";
+        return;
+      }
+      const remote = await queryUsername(state.client, checked.username);
+      if (ticket !== usernameTicket) return;
+      status.textContent = usernameStatus(checked, remote).text;
+    }, 400);
+  }
+
+  async function ensureUsernameFree(checked, ownId) {
+    if (!state.client) return { ok: true, text: "" };
+    const remote = await queryUsername(state.client, checked.username);
+    if (remote.taken && ownId && remote.id === ownId) {
+      return { ok: true, text: `${checked.username} is available.` };
+    }
+    const status = usernameStatus(checked, remote);
+    return { ok: status.state === "available", text: status.text };
+  }
+
+  async function submitCreate(usernameInput, emailInput, passwordInput) {
+    const username = validateUsername(usernameInput.value);
+    if (!username.ok) {
+      setMessage(username.error);
+      return;
+    }
     const email = validateEmail(emailInput.value);
     if (!email.ok) {
-      message.textContent = email.error;
+      setMessage(email.error);
       return;
     }
     const password = validatePassword(passwordInput.value);
     if (!password.ok) {
-      message.textContent = password.error;
+      setMessage(password.error);
       return;
     }
-    message.textContent = mode === "sign-up" ? "Creating the account…" : "Signing in…";
-    const result = mode === "sign-up"
-      ? await state.client.auth.signUp({
-        email: email.email,
-        password: password.password,
-        options: { emailRedirectTo: authReturnUrl() },
-      })
-      : await state.client.auth.signInWithPassword({
-        email: email.email,
-        password: password.password,
-      });
+    if (!state.client) {
+      setMessage("Couldn't reach accounts just now. The rest of Honey Charts still works.");
+      return;
+    }
+    const availability = await ensureUsernameFree(username);
+    if (!availability.ok) {
+      setMessage(availability.text);
+      return;
+    }
+    rememberUsername(sessionStore(), username.username);
+    setMessage("Creating the account…");
+    const result = await state.client.auth.signUp({
+      email: email.email,
+      password: password.password,
+      options: {
+        emailRedirectTo: authReturnUrl(),
+        data: { username: username.username },
+      },
+    });
     if (result.error) {
-      message.textContent = friendlyAuthError(result.error);
+      setMessage(friendlyAuthError(result.error));
       return;
     }
-    if (mode === "sign-up" && !result.data.session) {
-      message.textContent = "Check your email to confirm the account, then sign in.";
+    if (result.data && result.data.session) {
+      setMessage("Account created.");
       return;
     }
-    closeDialog();
+    authView = { tab: "create", step: "code", email: email.email, mode: "signup", username: username.username };
+    paintAuth();
+    setMessage(`Enter the 6-digit code sent to ${email.email}.`);
   }
 
-  function solanaBlock(message) {
-    const block = el("div", { className: "account-solana" });
-    block.append(el("p", {
-      className: "fine",
-      text: "Sign in with Solana uses your own Phantom or Solflare wallet. Honey Charts never asks for a wallet secret.",
-    }));
-    const wallets = listLoginWallets();
-    if (!wallets.length) {
-      block.append(el("p", {
-        className: "muted",
-        text: "Phantom or Solflare was not found in this browser. Install one, then reopen this window. Email sign-in still works.",
-      }));
-      return block;
+  async function submitSignIn(emailInput, passwordInput) {
+    const email = validateEmail(emailInput.value);
+    if (!email.ok) {
+      setMessage(email.error);
+      return;
     }
-    for (const wallet of wallets) {
-      block.append(el("button", {
-        className: "primary",
-        text: `Sign in with ${wallet.name}`,
-        attrs: { type: "button" },
-        on: { click: () => solanaSignIn(wallet, message) },
-      }));
+    const password = validatePassword(passwordInput.value);
+    if (!password.ok) {
+      setMessage(password.error);
+      return;
     }
-    return block;
-  }
-
-  async function solanaSignIn(wallet, message) {
-    message.textContent = `Waiting for ${wallet.name} to sign the login message…`;
-    try {
-      const { error } = await signInWithSolanaWallet(state.client, wallet.provider);
-      if (error) {
-        message.textContent = friendlyAuthError(error);
+    if (!state.client) {
+      setMessage("Couldn't reach accounts just now. The rest of Honey Charts still works.");
+      return;
+    }
+    setMessage("Signing in…");
+    const result = await state.client.auth.signInWithPassword({
+      email: email.email,
+      password: password.password,
+    });
+    if (result.error) {
+      const raw = result.error.message || "";
+      if (/not confirmed/i.test(raw)) {
+        authView = { tab: "signin", step: "code", email: email.email, mode: "signup", username: "" };
+        paintAuth();
+        setMessage("Confirm the email with the 6-digit code, then this password will work.");
         return;
       }
-      closeDialog();
+      setMessage(friendlyAuthError(result.error));
+    }
+  }
+
+  async function sendEmailCode(emailInput, usernameInput) {
+    const email = validateEmail(emailInput.value);
+    if (!email.ok) {
+      setMessage(email.error);
+      return;
+    }
+    let username = "";
+    if (usernameInput && usernameInput.value.trim()) {
+      const checked = validateUsername(usernameInput.value);
+      if (!checked.ok) {
+        setMessage(checked.error);
+        return;
+      }
+      const availability = await ensureUsernameFree(checked);
+      if (!availability.ok) {
+        setMessage(availability.text);
+        return;
+      }
+      username = rememberUsername(sessionStore(), checked.username);
+    }
+    if (!state.client) {
+      setMessage("Couldn't reach accounts just now. The rest of Honey Charts still works.");
+      return;
+    }
+    setMessage("Sending the code…");
+    const { error } = await state.client.auth.signInWithOtp({
+      email: email.email,
+      options: { emailRedirectTo: authReturnUrl(), shouldCreateUser: true },
+    });
+    if (error) {
+      setMessage(friendlyAuthError(error));
+      return;
+    }
+    authView = { ...authView, step: "code", email: email.email, mode: "email", username };
+    paintAuth();
+    setMessage(`Enter the 6-digit code sent to ${email.email}.`);
+  }
+
+  async function verifyCode(input, message) {
+    const code = validateOtpCode(input.value);
+    if (!code.ok) {
+      message.textContent = code.error;
+      return;
+    }
+    if (options.preview || !state.client) {
+      message.textContent = options.preview
+        ? "This is a sample code step on this computer. Nothing was sent."
+        : "Couldn't reach accounts just now. The rest of Honey Charts still works.";
+      return;
+    }
+    message.textContent = "Checking the code…";
+    const { error } = await state.client.auth.verifyOtp({
+      email: authView.email,
+      token: code.code,
+      type: authCodeType(authView.mode),
+    });
+    if (error) message.textContent = friendlyAuthError(error);
+    else message.textContent = "Signed in.";
+  }
+
+  async function resendCode(message) {
+    const button = dialog && dialog.querySelector("#resend-code");
+    if (button && button.disabled) return;
+    if (options.preview || !state.client) {
+      message.textContent = options.preview
+        ? "This is a sample code step on this computer. Nothing was sent."
+        : "Couldn't reach accounts just now. The rest of Honey Charts still works.";
+      return;
+    }
+    message.textContent = "Sending a new code…";
+    const sent = authView.mode === "signup"
+      ? await state.client.auth.resend({
+        type: "signup",
+        email: authView.email,
+        options: { emailRedirectTo: authReturnUrl() },
+      })
+      : await state.client.auth.signInWithOtp({
+        email: authView.email,
+        options: { emailRedirectTo: authReturnUrl(), shouldCreateUser: true },
+      });
+    if (sent.error) {
+      message.textContent = friendlyAuthError(sent.error);
+      return;
+    }
+    message.textContent = `A new code is on the way to ${authView.email}.`;
+    startResendCountdown();
+  }
+
+  function startResendCountdown() {
+    clearInterval(resendTimer);
+    let left = OTP_RESEND_SECONDS;
+    const button = dialog && dialog.querySelector("#resend-code");
+    const paint = () => {
+      const view = otpResendState(left);
+      if (!button) return;
+      button.textContent = view.label;
+      button.disabled = !view.canResend;
+    };
+    paint();
+    resendTimer = setInterval(() => {
+      left -= 1;
+      paint();
+      if (left <= 0) clearInterval(resendTimer);
+    }, 1000);
+  }
+
+  async function onWalletReady(choice) {
+    const wallets = listLoginWallets();
+    const match = wallets.find((item) => item.name.toLowerCase() === choice.name.toLowerCase())
+      || wallets.find((item) => choice.id && item.name.toLowerCase().includes(choice.id));
+    if (!match) {
+      setMessage("That wallet is not available in this browser.");
+      return;
+    }
+    if (!state.client) {
+      setMessage("Couldn't reach accounts just now. The rest of Honey Charts still works.");
+      return;
+    }
+    setMessage(`Waiting for ${match.name} to sign the login message…`);
+    try {
+      const { error } = await signInWithSolanaWallet(state.client, match.provider);
+      if (error) setMessage(friendlyAuthError(error));
     } catch (error) {
-      message.textContent = friendlyAuthError(error);
+      setMessage(friendlyAuthError(error));
     }
   }
 
@@ -406,6 +732,10 @@ export function startAccounts(options) {
       attrs: { type: "button" },
       on: {
         click: async () => {
+          if (!state.client) {
+            message.textContent = "Couldn't reach accounts just now. The rest of Honey Charts still works.";
+            return;
+          }
           message.textContent = "Opening Google…";
           const { error } = await state.client.auth.signInWithOAuth({
             provider: "google",
@@ -414,6 +744,170 @@ export function startAccounts(options) {
           if (error) message.textContent = friendlyAuthError(error);
         },
       },
+    });
+  }
+
+  function openWelcome() {
+    if (dialog && dialog.dataset.purpose === "welcome") return;
+    closeDialog();
+    dialog = el("dialog", {
+      className: "account-dialog is-welcome",
+      attrs: { "aria-labelledby": "welcome-title" },
+    });
+    dialog.dataset.purpose = "welcome";
+    wireDialog(dialog);
+    dialog.append(welcomeCard());
+    document.body.append(dialog);
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    const first = dialog.querySelector("input");
+    if (first) first.focus();
+  }
+
+  function welcomeCard() {
+    const card = el("div", { className: "account-card" });
+    card.append(el("div", { className: "account-card-head" }, [
+      el("h2", { attrs: { id: "welcome-title" }, text: "Welcome to the hive" }),
+      el("button", {
+        className: "ghost",
+        text: "Close",
+        attrs: { type: "button" },
+        on: { click: closeDialog },
+      }),
+    ]));
+    card.append(el("p", {
+      className: "muted",
+      text: "Pick how you show up. You can change this later. The song stays paused until someone presses play.",
+    }));
+    const message = el("p", { className: "account-message", attrs: { id: "account-message", role: "status" } });
+    const form = el("form", { className: "account-form welcome-form" });
+    const username = textInput("welcome-username", suggestedUsername(), "Username");
+    const displayName = textInput("welcome-display", options.preview === "welcome" ? "Big Jim" : "", "Display name");
+    const songUrl = textInput("welcome-song", "", "Profile song link");
+    const songTitle = textInput("welcome-song-title", "", "Song title");
+    const file = el("input", {
+      attrs: { id: "welcome-avatar", type: "file", accept: "image/png,image/jpeg,image/webp,image/gif" },
+    });
+    const errors = el("div", { className: "form-errors", attrs: { role: "alert" } });
+    form.append(fieldBlock("Username", username, "This becomes your public page."));
+    form.append(fieldBlock("Display name", displayName, ""));
+    form.append(fieldBlock("Avatar", file, "Optional image, under 2 MB."));
+    form.append(fieldBlock("Profile song", songUrl, "Optional https mp3, YouTube, or SoundCloud link."));
+    form.append(fieldBlock("Song title", songTitle, ""));
+    form.append(errors, message);
+    form.append(el("button", { className: "primary", text: "Enter the hive", attrs: { type: "submit" } }));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      saveWelcome({
+        username: username.value,
+        displayName: displayName.value,
+        songUrl: songUrl.value,
+        songTitle: songTitle.value,
+      }, file.files && file.files[0], errors, message);
+    });
+    card.append(form);
+    return card;
+  }
+
+  function suggestedUsername() {
+    const stored = readPendingUsername(sessionStore());
+    if (stored) return stored;
+    if (options.preview === "welcome") return "bigjim";
+    const meta = user() && user().user_metadata;
+    const raw = meta && typeof meta.username === "string" ? meta.username : "";
+    const checked = validateUsername(raw);
+    return checked.ok ? checked.username : "";
+  }
+
+  async function saveWelcome(input, file, errors, message) {
+    const draft = cleanWelcomeDraft(input);
+    clear(errors);
+    if (!draft.ok) {
+      for (const text of Object.values(draft.errors)) errors.append(el("p", { className: "field-error", text }));
+      return;
+    }
+    if (options.preview || !user() || !state.client) {
+      message.textContent = "This is a sample on this computer. Nothing was saved.";
+      return;
+    }
+    if (file) {
+      const avatar = validateAvatarFile(file);
+      if (!avatar.ok) {
+        errors.append(el("p", { className: "field-error", text: avatar.error }));
+        return;
+      }
+    }
+    const availability = await ensureUsernameFree({ ok: true, username: draft.values.username }, user().id);
+    if (!availability.ok) {
+      message.textContent = availability.text;
+      return;
+    }
+    message.textContent = "Saving your profile…";
+    if (file) {
+      const uploaded = await uploadAvatar(state.client, user().id, file);
+      if (uploaded.error) {
+        message.textContent = isSchemaOffline(uploaded.error) ? ACCOUNTS_OFFLINE : "The avatar did not upload. The rest of the form was not saved.";
+        return;
+      }
+      const savedAvatar = await setAvatarUrl(state.client, user().id, uploaded.publicUrl);
+      if (savedAvatar.error) {
+        message.textContent = "The avatar uploaded, but the profile did not update.";
+        return;
+      }
+    }
+    const existing = state.profile || {};
+    const saved = await saveProfile(state.client, user().id, {
+      username: draft.values.username,
+      displayName: draft.values.displayName,
+      bio: existing.bio || "",
+      website: existing.website || "",
+      xHandle: existing.xHandle || "",
+      telegram: existing.telegram || "",
+      solanaAddress: existing.solanaAddress || "",
+      songUrl: draft.values.songUrl,
+      songTitle: draft.values.songTitle,
+      hivePublic: existing.hivePublic !== false,
+    });
+    if (saved.error) {
+      message.textContent = duplicateUsername(saved.error) ? "That username is taken." : friendlyAuthError(saved.error);
+      return;
+    }
+    state.profile = saved.profile || { ...existing, ...draft.values, username: draft.values.username };
+    paintHeader();
+    landOnProfile(draft.values.username);
+  }
+
+  function landOnProfile(username) {
+    closeDialog();
+    const href = profilePath(location.pathname, username);
+    history.pushState(null, "", href);
+    if (options.onNavigate) options.onNavigate();
+    if (options.setStatus) options.setStatus("Welcome to the hive. This is your profile.");
+  }
+
+  function setMessage(text) {
+    const node = dialog && dialog.querySelector("#account-message");
+    if (node) node.textContent = text || "";
+    else if (text) notify(text);
+  }
+
+  function closeDialog() {
+    clearInterval(resendTimer);
+    resendTimer = 0;
+    clearTimeout(usernameTimer);
+    usernameTimer = 0;
+    if (!dialog) return;
+    if (dialog.open && typeof dialog.close === "function") dialog.close();
+    dialog.remove();
+    dialog = null;
+  }
+
+  function wireDialog(node) {
+    node.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeDialog();
+    });
+    node.addEventListener("click", (event) => {
+      if (event.target === node) closeDialog();
     });
   }
 
@@ -854,6 +1348,14 @@ export function startAccounts(options) {
       pageTicket += 1;
     },
   };
+}
+
+function sessionStore() {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
 }
 
 function authReturnUrl() {

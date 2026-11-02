@@ -1,5 +1,8 @@
-// Finds Phantom or Solflare so Supabase can ask the wallet to sign a login message.
-// This file never sends a transaction and never reads a wallet secret.
+// Finds Phantom, Solflare, and Wallet Standard wallets so Supabase can ask
+// the wallet to sign a login message. This file never sends a transaction
+// and never reads a wallet secret.
+
+import { listStandardLoginWallets, standardLoginProvider } from "./wallet.js";
 
 export const LOGIN_STATEMENT = "Sign in to Honey Charts. This signs a login message only. It does not send a transaction or move any tokens.";
 
@@ -7,6 +10,9 @@ export function listLoginWallets() {
   const found = [];
   pushWallet(found, phantomProvider(), "Phantom");
   pushWallet(found, solflareProvider(), "Solflare");
+  for (const entry of listStandardLoginWallets()) {
+    pushWallet(found, standardLoginProvider(entry.wallet), entry.name);
+  }
   return found;
 }
 
@@ -36,6 +42,8 @@ function solflareProvider() {
 
 function pushWallet(list, provider, name) {
   if (!provider) return;
+  const label = String(name || "Wallet");
   if (list.some((item) => item.provider === provider)) return;
-  list.push({ name, provider });
+  if (list.some((item) => item.name.toLowerCase() === label.toLowerCase())) return;
+  list.push({ name: label, provider });
 }
