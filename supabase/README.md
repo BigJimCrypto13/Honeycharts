@@ -47,13 +47,55 @@ If you do not see Solana, open the Web3 section and enable the Solana chain. Ema
 
 Sign in with Solana asks Phantom or Solflare to sign a login message. It does not send a transaction and it does not ask for a seed phrase or a private key.
 
-## 4. Email sign-in
+## 4. Email codes (do this or the 6-digit code is not in the mail)
 
-1. On that same Providers page, open **Email**.
-2. Leave **Enable Email provider** on.
-3. Leave **Confirm email** on if you want a new password account to click a mail before it can sign in. The magic link still works either way: the visitor enters an email, gets a link, and that link signs them in.
+The site asks for a 6-digit code on the same page. That code is `{{ .Token }}` in the email. Supabase does not put the code in the mail until you paste it into the template.
 
-You do not need to edit the email templates.
+1. Open https://supabase.com/dashboard/project/hqqmarbovsgvyfjzxqjj
+2. Left sidebar: **Authentication**.
+3. Click **Emails**.
+4. Click **Templates**.
+5. Open **Confirm signup**.
+6. Replace the message body with this, then save:
+
+```html
+<h2>Confirm your Honey Charts account</h2>
+<p>Enter this code on the Honey Charts page:</p>
+<p>{{ .Token }}</p>
+<p>Or open this link on any device: <a href="{{ .ConfirmationURL }}">Confirm and sign in</a></p>
+```
+
+7. Open **Magic Link**.
+8. Replace the message body with this, then save:
+
+```html
+<h2>Your Honey Charts sign-in code</h2>
+<p>Enter this code on the Honey Charts page:</p>
+<p>{{ .Token }}</p>
+<p>Or open this link on any device: <a href="{{ .ConfirmationURL }}">Sign in</a></p>
+```
+
+`{{ .Token }}` is the 6-digit code. `{{ .ConfirmationURL }}` is the link. Keep both lines.
+
+### Confirm email
+
+1. Left sidebar: **Authentication**.
+2. Click **Sign In / Providers**.
+3. Open **Email**.
+4. Leave **Enable Email provider** on.
+5. **Confirm email** is the switch that decides if a new password account must enter a code.
+
+Leave **Confirm email** on. A new account then stays on the page, gets a code, and types it. That is the flow the site is built for.
+
+If you turn **Confirm email** off, Create account signs the person in immediately and no code is sent. That is faster, and it does not prove they own the email. Keep the switch on.
+
+### Redirect URLs
+
+You do not need to add another redirect URL for the code. The code is typed on the site, so it never leaves the page.
+
+A clicked link still returns to the Site URL you already set, `https://bigjimcrypto13.github.io/Honeycharts/`, which is covered by `https://bigjimcrypto13.github.io/Honeycharts/**`. Add a new redirect only if you host the site on a different origin.
+
+The site uses the implicit email link (the session rides in the link hash) so a link opened on a phone still signs in. The code works either way, including on a different device. An old link that was sent before this change can show a clear error instead of doing nothing. The person then requests a new code.
 
 ## 5. Google, later
 
@@ -77,8 +119,8 @@ Do not put the Google client secret in the repo. Supabase stores it.
 
 ## What a visitor can do after this
 
-- **Join the hive** opens sign-in. Email magic link, email plus password, and Sign in with Solana (Phantom or Solflare).
-- A signed-in visitor gets a public page at `?u=username` after they save a username on **Edit profile**.
+- **Join the hive** opens **Create account** (username, email, and password on one form) and a **Sign in** tab. **Email me a code instead** sends a 6-digit code that is typed on the same page. Phantom and Solflare stay on the window and in the header even when the browser has no wallet extension.
+- The first sign-in without a username opens **Welcome to the hive** (username, display name, optional avatar and profile song) and then the public page at `?u=username`.
 - They can upload an avatar, paste a profile song (mp3, YouTube, or SoundCloud), and choose whether the Hive is public.
 - The song does not start by itself. The page shows a Play button.
 - Their Hive mints sync to their account and merge with the list already in that browser. Notes stay in the browser.

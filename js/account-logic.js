@@ -77,6 +77,226 @@ export function validatePassword(raw) {
   return { ok: true, password: raw };
 }
 
+export const OTP_LENGTH = 6;
+export const OTP_RESEND_SECONDS = 60;
+export const PHANTOM_DOWNLOAD_URL = "https://phantom.com/download";
+export const SOLFLARE_DOWNLOAD_URL = "https://solflare.com/download";
+export const CROSS_BROWSER_LINK_ERROR = "This sign-in link was opened in a different browser, so it could not finish. Enter the 6-digit code from the email on this page, or request a new one.";
+
+const KNOWN_WALLETS = [
+  { id: "phantom", name: "Phantom", downloadUrl: PHANTOM_DOWNLOAD_URL },
+  { id: "solflare", name: "Solflare", downloadUrl: SOLFLARE_DOWNLOAD_URL },
+];
+const PENDING_USERNAME_KEY = "honeycharts.pendingUsername";
+const AUTH_QUERY_KEYS = ["code", "error", "error_code", "error_description", "token_hash", "type"];
+
+export function validateOtpCode(raw) {
+  if (typeof raw !== "string") return fail("Enter the 6-digit code from the email.");
+  const code = raw.replace(/\s+/g, "");
+  if (!/^\d{6}$/.test(code)) return fail("Enter the 6-digit code from the email.");
+  return { ok: true, code };
+}
+
+export function otpResendState(secondsLeft) {
+  const left = Number.isFinite(secondsLeft) ? Math.max(0, Math.ceil(secondsLeft)) : 0;
+  return {
+    canResend: left <= 0,
+    label: left > 0 ? `Resend in ${left}s` : "Resend code",
+    secondsLeft: left,
+  };
+}
+
+export function authCodeType(mode) {
+  return mode === "signup" ? "signup" : "email";
+}
+
+export function usernameStatus(check, remote) {
+  if (!check || !check.ok) {
+    return { state: "invalid", text: check && check.error ? check.error : "Pick a username." };
+  }
+  if (!remote) return { state: "checking", text: "Checking that username…" };
+  if (remote.offline) return { state: "offline", text: ACCOUNTS_OFFLINE };
+  if (remote.error) return { state: "error", text: "Couldn't check that username just now." };
+  if (remote.taken) return { state: "taken", text: "That username is taken." };
+  return { state: "available", text: `${check.username} is available.` };
+}
+
+export function isLikelyMobile(ua) {
+  const text = typeof ua === "string" ? ua : "";
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(text);
+}
+
+export function walletBrowseUrl(brand, pageUrl) {
+  let url;
+  try {
+    url = new URL(pageUrl);
+  } catch {
+    return "";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+  const encodedPage = encodeURIComponent(url.href);
+  const encodedOrigin = encodeURIComponent(url.origin);
+  if (brand === "phantom") return `https://phantom.app/ul/browse/${encodedPage}?ref=${encodedOrigin}`;
+  if (brand === "solflare") return `https://solflare.com/ul/v1/browse/${encodedPage}?ref=${encodedOrigin}`;
+  return "";
+}
+
+export function connectChoices(detectedNames, environment) {
+  const names = (Array.isArray(detectedNames) ? detectedNames : [])
+    .map((item) => (typeof item === "string" ? item : item && item.name ? String(item.name) : ""))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const mobile = Boolean(environment && environment.mobile);
+  const pageUrl = environment && typeof environment.pageUrl === "string" ? environment.pageUrl : "";
+  const brands = KNOWN_WALLETS.map((known) => brandChoice(known, names, mobile, pageUrl));
+  const extras = [];
+  for (const name of names) {
+    const lower = name.toLowerCase();
+    if (lower.includes("phantom") || lower.includes("solflare")) continue;
+    if (extras.some((item) => item.name.toLowerCase() === lower)) continue;
+    extras.push({ id: `extra:${lower}`, name, action: "sign-in", href: "", note: "" });
+  }
+  return { brands, extras };
+}
+
+export function headerWalletNote(plan) {
+  const brands = plan && Array.isArray(plan.brands) ? plan.brands : [];
+  const pending = brands.filter((item) => item.action !== "sign-in");
+  if (!pending.length) return "";
+  if (pending.every((item) => item.action === "browse")) {
+    return "Opens the wallet app and loads this page there, where sign-in can use the wallet.";
+  }
+  return "No wallet in this browser. Install Phantom or Solflare, or join with email.";
+}
+
+export function needsWelcome(profile) {
+  if (!profile || typeof profile !== "object") return true;
+  return !profile.username;
+}
+
+export function cleanWelcomeDraft(input) {
+  const source = input && typeof input === "object" ? input : {};
+  const errors = {};
+  const username = validateUsername(source.username == null ? "" : String(source.username));
+  if (!username.ok) errors.username = username.error;
+  const displayName = plainText(source.displayName, DISPLAY_NAME_MAX);
+  if (source.displayName != null && String(source.displayName).trim() && !displayName.ok) {
+    errors.displayName = "Display name must be 40 characters or fewer, with no control characters.";
+  }
+  let songUrl = "";
+  if (source.songUrl != null && String(source.songUrl).trim()) {
+    const song = parseSongUrl(source.songUrl);
+    if (!song.ok) errors.songUrl = song.error;
+    else songUrl = song.song.pageUrl || song.song.src;
+  }
+  const songTitle = plainText(source.songTitle, SONG_TITLE_MAX);
+  if (source.songTitle != null && String(source.songTitle).trim() && !songTitle.ok) {
+    errors.songTitle = "Song title must be 80 characters or fewer.";
+  }
+  return {
+    ok: Object.keys(errors).length === 0,
+    errors,
+    values: {
+      username: username.ok ? username.username : "",
+      displayName: displayName.ok ? displayName.value : "",
+      songUrl,
+      songTitle: songTitle.ok ? songTitle.value : "",
+    },
+  };
+}
+
+export function rememberUsername(storage, username) {
+  const checked = validateUsername(typeof username === "string" ? username : "");
+  if (!checked.ok) return "";
+  if (storage && typeof storage.setItem === "function") {
+    try {
+      storage.setItem(PENDING_USERNAME_KEY, checked.username);
+    } catch {
+      // A blocked session store still leaves the username in the form.
+    }
+  }
+  return checked.username;
+}
+
+export function readPendingUsername(storage) {
+  if (!storage || typeof storage.getItem !== "function") return "";
+  try {
+    const checked = validateUsername(storage.getItem(PENDING_USERNAME_KEY) || "");
+    return checked.ok ? checked.username : "";
+  } catch {
+    return "";
+  }
+}
+
+export function parseAuthReturn(href) {
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return { kind: "none" };
+  }
+  const hash = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
+  const errorDescription = firstText(url.searchParams.get("error_description"), hash.get("error_description"));
+  const errorCode = firstText(
+    url.searchParams.get("error"),
+    hash.get("error"),
+    url.searchParams.get("error_code"),
+    hash.get("error_code"),
+  );
+  if (errorDescription || errorCode) {
+    return { kind: "error", message: friendlyCallbackMessage(errorDescription || errorCode) };
+  }
+  const code = url.searchParams.get("code");
+  if (code) return { kind: "code", code };
+  const tokenHash = url.searchParams.get("token_hash");
+  const type = url.searchParams.get("type");
+  if (tokenHash && type && /^[a-z_]{1,32}$/.test(type)) {
+    return { kind: "token_hash", tokenHash, type };
+  }
+  if (hash.get("access_token")) return { kind: "implicit" };
+  return { kind: "none" };
+}
+
+export function authReturnCleanPath(href) {
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return "";
+  }
+  for (const key of AUTH_QUERY_KEYS) url.searchParams.delete(key);
+  const hash = url.hash.startsWith("#") ? url.hash.slice(1) : "";
+  const hashParams = new URLSearchParams(hash);
+  if (
+    hashParams.has("access_token")
+    || hashParams.has("refresh_token")
+    || hashParams.has("error")
+    || hashParams.has("error_description")
+  ) {
+    url.hash = "";
+  }
+  const search = url.searchParams.toString();
+  return `${url.pathname}${search ? `?${search}` : ""}${url.hash}`;
+}
+
+export function friendlyCallbackMessage(raw) {
+  let text = typeof raw === "string" ? raw : "";
+  try {
+    text = decodeURIComponent(text.replace(/\+/g, " "));
+  } catch {
+    // Keep the raw text when it is not encoded.
+  }
+  const lower = text.toLowerCase();
+  if (lower.includes("expired") || lower.includes("otp_expired")) {
+    return "That email link expired. Request a new 6-digit code and enter it on this page.";
+  }
+  if (lower.includes("invalid") || lower.includes("access_denied")) {
+    return "That email link could not sign you in. Request a new 6-digit code and enter it on this page.";
+  }
+  if (text && text.length <= 180 && !/key|token|secret|bearer/i.test(text)) return text;
+  return "That email link could not sign you in. Request a new 6-digit code and enter it on this page.";
+}
+
 export function validateAvatarFile(file) {
   if (!file) return fail("Choose an image.");
   const type = typeof file.type === "string" ? file.type : "";
@@ -328,6 +548,12 @@ export function friendlyAuthError(error) {
   if (lower.includes("already registered") || lower.includes("already been registered")) {
     return "That email already has an account. Sign in instead.";
   }
+  if (lower.includes("otp") || (lower.includes("token") && (lower.includes("expired") || lower.includes("invalid")))) {
+    return "That code is not valid or it expired. Request a new one.";
+  }
+  if (lower.includes("not confirmed")) {
+    return "Confirm the email with the 6-digit code, then this password will work.";
+  }
   if (isSchemaOffline(error)) return ACCOUNTS_OFFLINE;
   if (lower.includes("failed to fetch") || lower.includes("network")) {
     return "Couldn't reach accounts just now. The rest of Honey Charts still works.";
@@ -408,8 +634,24 @@ export function localPreviewKind(locationLike) {
   const search = typeof locationLike.search === "string" ? locationLike.search : "";
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const value = params.get("preview");
-  if (value === "signin" || value === "profile" || value === "edit") return value;
+  if (
+    value === "signin"
+    || value === "profile"
+    || value === "edit"
+    || value === "code"
+    || value === "welcome"
+    || value === "wallets"
+  ) return value;
   return "";
+}
+
+export function previewForcesPhone(locationLike) {
+  if (!locationLike) return false;
+  const host = locationLike.hostname || "";
+  if (host !== "localhost" && host !== "127.0.0.1") return false;
+  const search = typeof locationLike.search === "string" ? locationLike.search : "";
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  return params.get("phone") === "1";
 }
 
 export function supabaseHostFrom(url) {
@@ -440,6 +682,32 @@ export const SAMPLE_PROFILE = {
   followingViewer: false,
   hive: [{ mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", addedAt: 1 }],
 };
+
+function brandChoice(known, names, mobile, pageUrl) {
+  const installed = names.some((name) => name.toLowerCase().includes(known.id));
+  if (installed) return { id: known.id, name: known.name, action: "sign-in", href: "", note: "" };
+  const installNote = `${known.name} is not installed in this browser. Install it, or create an account with email.`;
+  if (mobile) {
+    const href = walletBrowseUrl(known.id, pageUrl);
+    if (href) {
+      return {
+        id: known.id,
+        name: known.name,
+        action: "browse",
+        href,
+        note: `Opens ${known.name} and loads this page in its browser, where sign-in can use the wallet.`,
+      };
+    }
+  }
+  return { id: known.id, name: known.name, action: "install", href: known.downloadUrl, note: installNote };
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
 
 function countText(value) {
   const number = Number(value);
