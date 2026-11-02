@@ -354,6 +354,7 @@ function rowFromGeckoPool(pool, included) {
   const rel = pool.relationships || {};
   const baseRef = rel.base_token && rel.base_token.data;
   const quoteRef = rel.quote_token && rel.quote_token.data;
+  const dexRef = rel.dex && rel.dex.data;
   const baseId = baseRef && baseRef.id;
   const quoteId = quoteRef && quoteRef.id;
   const baseAttrs = included.get(baseId) || {};
@@ -373,6 +374,8 @@ function rowFromGeckoPool(pool, included) {
   if (row.marketCap == null) row.marketCap = nonNegative(attrs.fdv_usd);
   row.liquidity = nonNegative(attrs.reserve_in_usd);
   row.createdAt = timeMs(attrs.pool_created_at);
+  row.poolAddress = typeof attrs.address === "string" ? attrs.address : "";
+  if (dexRef && typeof dexRef.id === "string") row.dex = clipText(dexRef.id, 32);
   const change = attrs.price_change_percentage || {};
   const volume = attrs.volume_usd || {};
   const txns = attrs.transactions || {};

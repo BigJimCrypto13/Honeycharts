@@ -97,6 +97,43 @@ export function safeImageUrl(value) {
   return url.href;
 }
 
+// Token art is hosted all over the public web (IPFS gateways, launchpads,
+// Jupiter, project CDNs). This allows any public https URL and rejects
+// active-content schemes, credentials, and local or private hosts.
+export function safeTokenImageUrl(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 800) return null;
+  if (IMAGE_ID_RE.test(trimmed)) return safeImageUrl(trimmed);
+  let url;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:") return null;
+  if (url.username || url.password) return null;
+  if (isBlockedImageHost(url.hostname)) return null;
+  return url.href;
+}
+
+export function isBlockedImageHost(hostname) {
+  if (typeof hostname !== "string" || !hostname) return true;
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host.endsWith(".internal") || host.endsWith(".localdomain")) return true;
+  if (host.includes(":")) return true;
+  const parts = host.split(".");
+  if (parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part))) {
+    const nums = parts.map((part) => Number(part));
+    if (nums.some((num) => num > 255)) return true;
+    return true;
+  }
+  if (!host.includes(".")) return true;
+  if (parts.some((part) => !part)) return true;
+  return false;
+}
+
 export function safeLinkLabel(kind, href) {
   const safe = safeHttpUrl(href);
   if (!safe) return null;

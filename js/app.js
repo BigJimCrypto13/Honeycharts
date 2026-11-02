@@ -61,7 +61,8 @@ import {
   setHivePressed,
   updateQuotedStats,
 } from "./render.js";
-import { renderHome } from "./home-view.js";
+import { renderHome, tickLaunchAges } from "./home-view.js";
+import { createLiveFeed, emptyLiveSnapshot } from "./live-feed.js";
 import { mountIntroOverlay, prefersReducedMotion, shouldShowIntro } from "./intro.js";
 import {
   BTC_MINT,
@@ -109,8 +110,9 @@ const boardUi = {
   sortKey: "default",
   sortDir: "desc",
   quickBuy: 0.1,
-  mobileTab: "trending",
+  mobileTab: "new",
   railOpen: true,
+  shown: { new: 48, hot: 36, done: 36, table: 48 },
 };
 let boardRows = [];
 let boardBoosts = { items: [], total: 0, error: "" };
@@ -119,6 +121,9 @@ let boardLoading = true;
 let boardPromise = null;
 let boardAt = 0;
 let majors = { sol: null, btc: null, eth: null };
+let liveSnap = emptyLiveSnapshot();
+let liveFeed = null;
+let ageTimer = 0;
 let welcomeDismissed = readWelcomeDismissed(storage);
 let introSeen = readIntroSeen(storage);
 let accounts = {
@@ -174,6 +179,8 @@ const actions = {
   setBoardSort,
   setQuickBuy,
   setMobileTab,
+  loadMore,
+  flushLive,
   toggleHiveCa,
   toggleTrendRail,
   setAboutWindow,
@@ -252,6 +259,15 @@ function boot() {
       render();
     },
   });
+  liveFeed = createLiveFeed({
+    storage,
+    getSolPrice: () => (majors.sol && majors.sol.price) || null,
+    onUpdate(snap) {
+      liveSnap = snap || emptyLiveSnapshot();
+      if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+    },
+  });
+  liveFeed.start();
   actions.openSignIn = (tab) => accounts.openSignIn(tab || "create");
   render();
   refreshMajors();
@@ -277,6 +293,7 @@ function begin() {
   aborter = new AbortController();
   clearInterval(hiveTimer);
   clearInterval(homeTimer);
+  clearInterval(ageTimer);
   return generation;
 }
 
@@ -369,6 +386,9 @@ async function showHome(gen, routeError) {
       if (error && error.name === "AbortError") return;
     });
   }, 20000);
+  ageTimer = setInterval(() => {
+    if (currentRoute().name === "home") tickLaunchAges(view);
+  }, 1000);
 }
 
 function feedValue(result, message) {
@@ -1289,8 +1309,24 @@ function setQuickBuy(sol) {
 }
 
 function setMobileTab(tab) {
-  if (!["trending", "new", "trades"].includes(tab)) return;
+  if (!["new", "hot", "done", "trending", "trades"].includes(tab)) return;
   boardUi.mobileTab = tab;
+  if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+}
+
+function loadMore(which) {
+  const caps = { new: 200, hot: 80, done: 80, table: 240 };
+  const steps = { new: 36, hot: 24, done: 24, table: 40 };
+  if (!caps[which]) return;
+  const available = which === "table"
+    ? boardRows.length
+    : ((liveSnap.columns && liveSnap.columns[which === "new" ? "fresh" : which === "hot" ? "hot" : "done"]) || []).length;
+  if (boardUi.shown[which] >= caps[which] || boardUi.shown[which] >= available) return;
+  boardUi.shown[which] = Math.min(caps[which], boardUi.shown[which] + steps[which]);
+  if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
+}
+
+function flushLive() {
   if (currentRoute().name === "home") renderHome(view, homeModel(), actions);
 }
 
@@ -1317,7 +1353,8 @@ function toggleHiveCa(ca) {
     noteHive({ type: "remove", ca });
     setStatus("Removed from Hive.", undoButton(removed));
   } else {
-    const row = boardRows.find((item) => item.ca === ca);
+    const row = boardRows.find((item) => item.ca === ca)
+      || (liveSnap.launches || []).find((item) => item.ca === ca);
     try {
       hive.add(ca, row && row.name, row && row.symbol);
       noteHive({ type: "add", token: hive.get(ca) });
@@ -1366,25 +1403,26 @@ async function ensureBoard(gen, options = {}) {
 
 async function loadBoard(gen) {
   const signal = aborter.signal;
-  const [gtTrend, gtNew, jupTrend, jupTrade, jupRecent, boostResult] = await Promise.allSettled([
+  const [gtTrend, gtNew, gtNew2, jupTrend, jupTrade, jupRecent, boostResult] = await Promise.allSettled([
     fetchGeckoPools("trending", { signal }),
-    fetchGeckoPools("new", { signal }),
+    fetchGeckoPools("new", { signal, page: 1 }),
+    fetchGeckoPools("new", { signal, page: 2 }),
     fetchJupiterBoard("trending", { signal }),
     fetchJupiterBoard("traded", { signal }),
     fetchJupiterBoard("recent", { signal }),
     fetchSolanaFeed("boosts", { signal }),
   ]);
   if (!alive(gen)) return boardRows;
-  if ([gtTrend, gtNew, jupTrend, jupTrade, jupRecent].every(abortedResult)) return boardRows;
+  if ([gtTrend, gtNew, gtNew2, jupTrend, jupTrade, jupRecent].every(abortedResult)) return boardRows;
   const groups = [
     withRank(settledRows(gtTrend, parseGeckoPools), "trendingRank", 0),
     withRank(settledRows(jupTrend, parseJupiterTokens), "trendingRank", 1000),
-    withRank(settledRows(gtNew, parseGeckoPools), "newRank", 0),
+    withRank(settledRows(gtNew, parseGeckoPools).concat(settledRows(gtNew2, parseGeckoPools)), "newRank", 0),
     withRank(settledRows(jupRecent, parseJupiterTokens), "newRank", 1000),
     settledRows(jupTrade, parseJupiterTokens),
   ];
   let rows = mergeCoinRows(groups);
-  const failed = [gtTrend, gtNew, jupTrend, jupTrade, jupRecent].filter((result) => result.status === "rejected" && !abortedResult(result));
+  const failed = [gtTrend, gtNew, gtNew2, jupTrend, jupTrade, jupRecent].filter((result) => result.status === "rejected" && !abortedResult(result));
   if (!rows.length && failed.length) {
     boardError = feedErrorMessage(failed[0].reason);
     boardLoading = false;
@@ -1402,7 +1440,11 @@ async function loadBoard(gen) {
   rows = ensureHiveRows(rows, hive.list(), fetched);
   mergeStats(fetched);
   const nextMajors = readMajors(fetched);
-  if (nextMajors.sol || nextMajors.btc || nextMajors.eth) majors = nextMajors;
+  if (nextMajors.sol || nextMajors.btc || nextMajors.eth) {
+    const priceChanged = !majors.sol || !nextMajors.sol || majors.sol.price !== nextMajors.sol.price;
+    majors = nextMajors;
+    if (priceChanged && liveFeed) liveFeed.touch();
+  }
   boardRows = rows;
   boardBoosts = feedValue(boostResult, "The boosted list did not load.");
   boardError = "";
@@ -1441,8 +1483,10 @@ async function refreshMajors() {
     const fetched = await fetchTokenPairs([SOL_MINT, BTC_MINT, ETH_MINT]);
     const next = readMajors(fetched);
     if (!next.sol && !next.btc && !next.eth) return;
+    const priceChanged = !majors.sol || !next.sol || majors.sol.price !== next.sol.price;
     majors = next;
     paintMajors();
+    if (priceChanged && liveFeed) liveFeed.touch();
   } catch {
     // The status bar keeps the last prices.
   }
@@ -1505,6 +1549,8 @@ function homeModel() {
     sortDir: boardUi.sortDir,
     quickBuy: boardUi.quickBuy,
     mobileTab: boardUi.mobileTab,
+    shown: boardUi.shown,
+    live: liveSnap,
     rows: boardRows,
     hiveOrder: hive.list().map((token) => token.ca),
     inHive: (ca) => hive.has(ca),
