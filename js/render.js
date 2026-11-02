@@ -1,4 +1,5 @@
 import { el, clear, externalLink } from "./dom.js";
+import { renderTradeWallets } from "./wallet-connect-ui.js";
 import { markerLabel } from "./search.js";
 import { safeImageUrl, safeHttpUrl, safeLinkLabel, clipText, isValidCA } from "./sanitize.js";
 import { HEURISTIC_SUMMARY } from "./creator.js";
@@ -1059,6 +1060,13 @@ function renderSwap(ca, model, actions) {
   section.append(el("p", {
     className: "fine",
     text: "The button only fills Jupiter. You connect and sign in your own wallet. Honey Charts never sees your keys.",
+  }));
+  section.append(renderTradeWallets({
+    onEmail: () => actions.openSignIn && actions.openSignIn("create"),
+    onInstalled: () => {
+      const mount = section.querySelector("#swap-mount");
+      if (mount && typeof mount.scrollIntoView === "function") mount.scrollIntoView({ block: "nearest" });
+    },
   }));
   const feeText = feeDisclosure();
   if (feeText) section.append(el("p", { className: "fee-note", text: feeText }));

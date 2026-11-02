@@ -255,6 +255,9 @@ function boot() {
       const route = currentRoute();
       if (route.name === "edit-profile" || route.name === "hive" || route.name === "home") render();
     },
+    onNavigate() {
+      render();
+    },
   });
   liveFeed = createLiveFeed({
     storage,
@@ -265,6 +268,7 @@ function boot() {
     },
   });
   liveFeed.start();
+  actions.openSignIn = (tab) => accounts.openSignIn(tab || "create");
   render();
   refreshMajors();
   setInterval(refreshMajors, 30000);
