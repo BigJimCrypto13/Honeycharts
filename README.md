@@ -8,7 +8,7 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 
 - Paste a Solana contract address, or type a name or ticker such as `bonk` or `$WIF`. A short list of Solana matches appears under the header. Rows are sorted by liquidity times 24h volume, so a deep pool with almost no trading sinks below a market people are trading. Enter or the top row opens that token. A pasted address still opens that address directly. Jupiter can mark a row Verified or Strict list. The Honey Score on the token page is unchanged.
 - Read price, 5m / 1h / 6h / 24h change, liquidity, FDV, market cap, 24h volume, buys and sells, pair age, and DEX from the deepest Solana pair.
-- Save tokens in the Hive. The list lives in `localStorage` on this browser. You can sort it, add a short note, remove a token, and export or import a JSON backup.
+- Save tokens in the Hive. Signed out, the list lives in `localStorage` on this browser. Signed in, the mints also sync to your account and merge with that browser list. Notes stay in the browser. You can sort it, add a short note, remove a token, and export or import a JSON backup.
 - See tokens you opened under Recently viewed.
 - Read a Honey Score from 0 to 100. It restates public RugCheck and DexScreener flags. It is not a safety rating and it is not financial advice.
 - Land on a full-width board of live Solana coins: a trending chip strip, a sortable table (Trending, Most held, New, Graduated, Watchlist), new pairs, and top movers. A slim intro at the top can be dismissed on this browser. Paid DexScreener boosts sit at the bottom and are labeled as paid. Quick buy opens the token page with 0.1, 0.5, or 1 SOL filled into Jupiter. It does not sign.
@@ -20,15 +20,15 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 
 Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving.
 
-- The scanner and the Hive never connect a wallet. The Swap button only loads Jupiter's plugin. Connecting and approving stay inside that plugin and your wallet extension.
+- The scanner and a signed-out Hive never connect a wallet. The Swap button only loads Jupiter's plugin. Connecting and approving stay inside that plugin and your wallet extension. Sign in with Solana is separate: it asks Phantom or Solflare to sign a login message, and it does not send a transaction.
 - The referral fee uses the public referral account in `js/config.js`. The launch fee uses the public address `7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6`. Do not commit a private key, seed phrase, or secret-key file. Image upload does not use an API key.
 - The Launch tab talks to Phantom or Solflare only after you click Connect wallet to launch. Signing happens in that wallet. Honeycharts does not see wallet secrets. A one-time mint account signature is generated in the browser for that transaction and then discarded.
-- The Hive is local. Nothing in the watchlist is uploaded by this site.
+- Signed out, the Hive is local. Nothing in that watchlist is uploaded. Signed in, each mint and the time it was added sync to the `hive_items` table. Notes are not uploaded.
 - Contract addresses must be base58 and 32–44 characters.
 - Text from DexScreener and RugCheck is written as text, not HTML.
 - External links must be `http` or `https`, and they open with `rel="noopener noreferrer"`.
 - Imported Hive files are rejected unless they match the version 1 backup shape.
-- A Content-Security-Policy meta tag limits scripts to this site and `plugin.jup.ag`. Network and frame access stay on DexScreener, RugCheck, Jupiter, PumpPortal, Pump.fun, Litterbox, and the Solana RPC hosts `api.mainnet-beta.solana.com`, `api.devnet.solana.com`, and `solana-rpc.publicnode.com`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
+- A Content-Security-Policy meta tag limits scripts to this site, `plugin.jup.ag`, and the pinned `cdn.jsdelivr.net` build of supabase-js. Network access stays on DexScreener, RugCheck, Jupiter, PumpPortal, Pump.fun, Litterbox, the Solana RPC hosts `api.mainnet-beta.solana.com`, `api.devnet.solana.com`, and `solana-rpc.publicnode.com`, plus the public Supabase project. Frames are DexScreener, Jupiter, YouTube, and SoundCloud. Profile-song audio can load from `https`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
 - There are no third-party trackers.
 
 ## Run it locally
@@ -129,6 +129,12 @@ Figures are cached in memory for a short time, and refresh buttons wait two seco
 ## Old prototype
 
 `honey-meme-scanner.html` is an earlier single-file page. The current app is `index.html`.
+
+## Accounts
+
+Phase 1 sign-in, public profiles, follows, and Hive sync are in the page. The database is created by hand. The steps are in [supabase/README.md](supabase/README.md): open the Supabase SQL Editor, paste `supabase/migrations/001_accounts.sql`, and run it. Until that is done, the site says accounts are coming online and the Hive stays in the browser.
+
+The publishable key is in `js/auth-config.js`. Do not add a secret server key. Google sign-in stays hidden until `GOOGLE_AUTH_ENABLED` is set to `true` after the Google provider is turned on. That file's comments point at the same steps.
 
 ## Next
 

@@ -171,7 +171,7 @@ export function renderHive(root, model, actions) {
       el("h1", { text: "Hive" }),
       el("p", {
         className: "muted",
-        text: "A watchlist saved in this browser only. It is not uploaded, and it is not a portfolio.",
+        text: model.lead || "A watchlist saved in this browser only. It is not uploaded, and it is not a portfolio.",
       }),
     ]),
   ]));

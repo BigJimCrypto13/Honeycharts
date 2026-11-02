@@ -13,6 +13,7 @@ This is a static site on GitHub Pages. The notes below are the work that shipped
 - Content Security Policy, address checks, text rendering that does not use raw HTML, and strict Hive import checks.
 - Jupiter swap on the token page, collapsed until you press Swap. It uses Jupiter's official plugin, prefilled SOL to the token on screen, with referral account `6QwK1AUisPZrKHRYuYforGxNnY8hVGMjcvhEWAb5csDU` and a 50 bps fee. Honeycharts does not connect a wallet or sign anything. SOL and USDC fee token accounts still have to exist on referral.jup.ag or Jupiter skips the fee.
 - Launch tab for a Pump.fun bonding-curve token. Mainnet only, one wallet signature. Image and metadata upload needs no API key: Pump.fun's IPFS endpoint is tried first, then Litterbox for up to 72 hours, or a pasted https metadata link. The same transaction transfers 0.02 SOL to `7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6`. Pump.fun creator rewards stay with the launching wallet. Wallet connection is limited to the Launch tab and starts only from Connect wallet to launch.
+- Accounts phase 1: email sign-in, Sign in with Solana (a login message in Phantom or Solflare), public profiles, follows, and Hive mint sync. The SQL lives in `supabase/migrations/001_accounts.sql` and has to be run in the Supabase SQL Editor before those tables exist. Google stays hidden until its provider is enabled. Embedded wallets and the Hive vault are later.
 
 ## Limits of this version
 
@@ -22,7 +23,7 @@ This is a static site on GitHub Pages. The notes below are the work that shipped
 - Holder percentages can include pools and exchanges. The copy says that.
 - The Honey Score is a fixed heuristic. A high number is not a claim that a token is safe.
 - Home "boosted" tokens paid DexScreener. Honeycharts does not rank them and is not paid for that list.
-- The Hive disappears if the browser clears site data. Export is the backup.
+- Signed out, the Hive disappears if the browser clears site data. Export is the backup. Signed in, the mints are also on the account. Notes still stay in the browser.
 - Open Graph tags cannot change per token on a purely static host.
 
 ## Next, when there is a real reason
