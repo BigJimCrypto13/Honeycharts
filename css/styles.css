@@ -919,7 +919,7 @@ details p { margin-top: 8px; color: var(--muted); }
   .brand-row { display: contents; }
   .brand { grid-area: brand; }
   .nav { grid-area: nav; justify-content: flex-end; }
-  .account-slot { grid-area: account; margin-left: 0; width: 100%; justify-content: flex-end; }
+  .header-tools { grid-area: account; margin-left: 0; width: 100%; justify-content: flex-end; }
   .search { grid-area: search; margin-top: 0; max-width: none; }
   .search label {
     position: absolute;
@@ -1801,7 +1801,9 @@ body.intro-open { overflow: hidden; }
   body.is-token .market-bar { display: none; }
 }
 
-.account-slot { position: relative; display: flex; align-items: center; margin-left: auto; }
+.header-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.wallet-slot { display: flex; align-items: center; }
+.account-slot { position: relative; display: flex; align-items: center; }
 .header-account { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .header-account-row, .header-wallets { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
 .header-wallet { white-space: nowrap; min-height: 36px; padding: 6px 10px; font-size: 0.82rem; }
@@ -1957,7 +1959,8 @@ dialog.account-dialog {
 .profile-song audio { width: 100%; margin-top: 8px; }
 .profile-notice { padding: 16px; }
 @media (max-width: 720px) {
-  .account-slot { flex: 1 1 100%; min-width: 0; }
+  .header-tools, .account-slot { flex: 1 1 100%; min-width: 0; }
+  .header-tools { justify-content: flex-start; }
   .header-account { align-items: stretch; width: 100%; }
   .header-account, .header-wallets, .header-account-row { justify-content: flex-start; max-width: 100%; }
   .header-wallet-note { display: none; }
@@ -1974,7 +1977,88 @@ dialog.account-dialog {
   .avatar-edit { align-items: flex-start; }
 }
 
+.deposit-btn {
+  min-height: 48px;
+  padding: 12px 22px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  box-shadow: 0 8px 24px rgba(232, 154, 0, 0.35);
+}
+.wallet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.wallet-hero h1 { margin-bottom: 8px; }
+.balance-total { font-size: 2rem; font-weight: 800; margin: 0; color: var(--gold); }
+.holding-list, .activity-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.holding-row, .activity-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+.holding-row .ghost { grid-column: 1 / -1; justify-self: start; }
+.holding-symbol { margin: 0; font-weight: 800; }
+.holding-copy p, .holding-value p, .activity-row p { margin: 0; }
+.holding-value { text-align: right; }
+.token-face {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #3a2a10;
+  border: 1px solid var(--line);
+}
+.token-face img { width: 40px; height: 40px; object-fit: cover; }
+.token-letter { font-weight: 800; color: var(--gold); }
+.hive-tag { color: var(--gold); font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.qr-wrap { display: flex; justify-content: center; padding: 12px; background: #fff8e8; border-radius: 16px; }
+.qr-code { width: min(280px, 70vw); height: auto; }
+.deposit-address { word-break: break-all; }
+.deposit-network { font-size: 1.15rem; font-weight: 800; }
+.waiting { font-weight: 700; }
+.guide-steps { margin: 8px 0 0; padding-left: 1.2rem; }
+.file-btn { display: inline-flex; align-items: center; }
+#withdraw-scan {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.sample-banner { font-weight: 700; }
+.deposit-toast {
+  position: fixed;
+  z-index: 60;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 16px;
+  background: #1c150c;
+  border: 1px solid var(--gold);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.toast-title { font-size: 1.15rem; font-weight: 800; margin: 8px 0; }
+.toast-drip { margin-bottom: 8px; transform-origin: top; animation: honey-drip-fall 700ms ease-out; }
+@keyframes honey-drip-fall {
+  from { transform: scaleY(0.15); opacity: 0.15; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+.wallet-dialog .account-card { max-height: calc(100dvh - 120px); overflow: auto; }
+.activity-row.is-in { color: var(--up); }
+.activity-row.is-out { color: var(--down); }
+.wallet-dialog { width: min(520px, calc(100vw - 24px)); }
+.confirm-sheet p, .deposit-sheet p { margin: 8px 0; }
+
+@media (max-width: 720px) {
+  .wallet-slot .deposit-btn { min-height: 44px; padding: 8px 14px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; transition: none !important; }
   .skeleton { animation: none; }
+  .deposit-toast { animation: none; }
 }

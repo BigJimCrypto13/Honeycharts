@@ -178,6 +178,32 @@ export function standardLoginProvider(wallet) {
   return provider;
 }
 
+// Jupiter reads this object when the Honey Charts wallet pays for a swap.
+// The approve functions are supplied by the embedded wallet. This file does
+// not build a transaction and does not read a key.
+export function jupiterWalletState({ publicKey, approveOne, approveMany, sendRaw }) {
+  if (!publicKey || typeof approveOne !== "function" || typeof sendRaw !== "function") return null;
+  return {
+    autoConnect: false,
+    wallets: [],
+    wallet: null,
+    publicKey,
+    connected: true,
+    connecting: false,
+    disconnecting: false,
+    select() {},
+    async connect() {},
+    async disconnect() {},
+    sendTransaction: sendRaw,
+    signTransaction: approveOne,
+    signAllTransactions: typeof approveMany === "function" ? approveMany : async (txs) => {
+      const signed = [];
+      for (const tx of txs || []) signed.push(await approveOne(tx));
+      return signed;
+    },
+  };
+}
+
 function rememberLoginWallet(wallet) {
   if (!wallet.features) return;
   const chains = Array.isArray(wallet.chains) ? wallet.chains : [];

@@ -75,6 +75,17 @@ export function startAccounts(options) {
   let announceSignIn = false;
   let linkToasted = false;
   let authView = { tab: "create", step: "form", email: "", mode: "signup", username: "" };
+  const listeners = new Set();
+
+  function emitAuth() {
+    for (const fn of listeners) {
+      try {
+        fn();
+      } catch {
+        // A listener cannot break sign-in.
+      }
+    }
+  }
 
   function enqueue(task) {
     queue = queue.then(task, task);
@@ -157,6 +168,7 @@ export function startAccounts(options) {
     state.client.auth.onAuthStateChange((event, session) => {
       if (event === "TOKEN_REFRESHED") {
         state.session = session;
+        emitAuth();
         return;
       }
       announceSignIn = event === "SIGNED_IN";
@@ -192,12 +204,14 @@ export function startAccounts(options) {
       const probed = await probeSchema(state.client);
       state.schema = probed === "ready" ? "ready" : probed === "offline" ? "offline" : "unreachable";
       paintHeader();
+      emitAuth();
       return;
     }
     const result = await ensureProfile(state.client, user());
     state.schema = result.schema === "ready" ? "ready" : result.schema === "offline" ? "offline" : "unreachable";
     state.profile = result.profile;
     paintHeader();
+    emitAuth();
     presentSession();
     if (state.schema !== "ready" || syncedFor === user().id) return;
     syncedFor = user().id;
@@ -1346,6 +1360,15 @@ export function startAccounts(options) {
     showPreview,
     cancelPage() {
       pageTicket += 1;
+    },
+    accessToken() {
+      const session = state.session;
+      return session && typeof session.access_token === "string" ? session.access_token : "";
+    },
+    subscribe(fn) {
+      if (typeof fn !== "function") return () => {};
+      listeners.add(fn);
+      return () => listeners.delete(fn);
     },
   };
 }

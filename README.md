@@ -18,7 +18,7 @@ The live site is [bigjimcrypto13.github.io/Honeycharts](https://bigjimcrypto13.g
 
 ## Security promise
 
-Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving.
+Honeycharts will never ask for your seed phrase or private key. Swaps are handled by Jupiter in your own wallet; always check the transaction before approving. The optional built-in Solana wallet is non-custodial: Privy holds the key material in secure hardware, the visitor approves every send in Privy's window, and this site never stores a key. See [WALLET.md](WALLET.md).
 
 - The scanner and a signed-out Hive never connect a wallet. The Swap button only loads Jupiter's plugin. Connecting and approving stay inside that plugin and your wallet extension. Sign in with Solana is separate: it asks Phantom or Solflare to sign a login message, and it does not send a transaction.
 - The referral fee uses the public referral account in `js/config.js`. The launch fee uses the public address `7RCPmTbCbXM6MxUHy8fnriDVCZd9MfqY5X86FjU5gZc6`. Do not commit a private key, seed phrase, or secret-key file. Image upload does not use an API key.
@@ -28,7 +28,7 @@ Honeycharts will never ask for your seed phrase or private key. Swaps are handle
 - Text from DexScreener and RugCheck is written as text, not HTML.
 - External links must be `http` or `https`, and they open with `rel="noopener noreferrer"`.
 - Imported Hive files are rejected unless they match the version 1 backup shape.
-- A Content-Security-Policy meta tag limits scripts to this site, `plugin.jup.ag`, and the pinned `cdn.jsdelivr.net` build of supabase-js. Network access stays on DexScreener, RugCheck, Jupiter (including `lite-api.jup.ag`), PumpPortal (`https` and `wss`), Pump.fun, the IPFS and Arweave gateways used for token metadata, Litterbox, the Solana RPC hosts `api.mainnet-beta.solana.com`, `api.devnet.solana.com`, and `solana-rpc.publicnode.com`, plus the public Supabase project. Token images may load from any `https` host. Frames are DexScreener, Jupiter, YouTube, and SoundCloud. Profile-song audio can load from `https`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
+- A Content-Security-Policy meta tag limits scripts to this site, `plugin.jup.ag`, the pinned `cdn.jsdelivr.net` build of supabase-js, and `challenges.cloudflare.com` (Privy's bot check, used only after the wallet is switched on). Network access stays on DexScreener, RugCheck, Jupiter (including `lite-api.jup.ag`), PumpPortal (`https` and `wss`), Pump.fun, the IPFS and Arweave gateways used for token metadata, Litterbox, the Solana RPC hosts `api.mainnet-beta.solana.com`, `api.devnet.solana.com`, and `solana-rpc.publicnode.com` (plus `wss://solana-rpc.publicnode.com` and optional `mainnet.helius-rpc.com`), Privy (`https://auth.privy.io`, its websocket, and `https://*.rpc.privy.systems`), and the public Supabase project. Token images may load from any `https` host. Frames are DexScreener, Jupiter, YouTube, SoundCloud, Privy, and Cloudflare's challenge frame. Profile-song audio can load from `https`. The plugin fetches its font stylesheet from Google Fonts and injects its own style elements, so those are allowed too. Inline scripts and `eval` are not.
 - There are no third-party trackers.
 
 ## Run it locally
@@ -139,6 +139,16 @@ Figures are cached in memory for a short time, and refresh buttons wait two seco
 Phase 1 sign-in, public profiles, follows, and Hive sync are in the page. The database is created by hand. The steps are in [supabase/README.md](supabase/README.md): open the Supabase SQL Editor, paste `supabase/migrations/001_accounts.sql`, and run it. Until that is done, the site says accounts are coming online and the Hive stays in the browser.
 
 The publishable key is in `js/auth-config.js`. Do not add a secret server key. Google sign-in stays hidden until `GOOGLE_AUTH_ENABLED` is set to `true` after the Google provider is turned on. That file's comments point at the same steps.
+
+## Built-in wallet
+
+`WALLET_ENABLED` is `false`, so the Wallet nav opens **Wallet coming online** instead of a live address. The deployer lookup is still on that page under **Check a deployer wallet**, and `?wallet=` still opens it directly.
+
+When the flag is on, a signed-in account gets a Solana address from Privy with no extra setup and no seed phrase. Deposit shows a QR code and Copy. Holdings, recent activity, withdraw, and the Hive vault (tagline **Protect your colony**, with **Take offline**) live on `?view=wallet`. Buy and Sell on a token page can pay from that wallet and still send the 50 bps Jupiter referral to `6QwK1AUisPZrKHRYuYforGxNnY8hVGMjcvhEWAb5csDU`. Phantom, Solflare, and Backpack remain available. The exact clicks to create the Privy app and paste the public app id are in [WALLET.md](WALLET.md). Do not commit a Privy app secret.
+
+`?view=wallet&sample=1` draws labeled sample balances so the layout can be reviewed before the app id exists. Those numbers are not a wallet. Do not send coins to that address.
+
+Balances are read from `SOLANA_READ_RPC` (`https://solana-rpc.publicnode.com`). `HELIUS_API_KEY` in `js/auth-config.js` is optional and public. USDC is mint `EPjFWdd5AufqSSqeM2qN1xyybapC8G4wEGGkZwyTDt1v`.
 
 ## Next
 

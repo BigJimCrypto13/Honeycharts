@@ -13,3 +13,14 @@ export const AUTH_SITE_URL = "https://bigjimcrypto13.github.io/Honeycharts/";
 // The Google button stays hidden until this is true.
 // Steps to turn the provider on are in supabase/README.md.
 export const GOOGLE_AUTH_ENABLED = false;
+
+// Built-in Solana wallet. Leave this false until the public Privy ids are pasted.
+// The steps are in WALLET.md. These ids are public. Never paste a secret here.
+export const WALLET_ENABLED = false;
+export const PRIVY_APP_ID = "";
+export const PRIVY_CLIENT_ID = "";
+
+// Optional public Helius RPC key. Leave this empty to use the public RPC in
+// js/config.js. A key in this file is visible to every visitor and spends that
+// key's free quota. It is not a server secret. Do not paste a key you cannot rotate.
+export const HELIUS_API_KEY = "";

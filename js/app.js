@@ -31,6 +31,8 @@ import {
 import { buildHoneyScore } from "./score.js";
 import { createCreatorCache, loadCreatorHistory, resolveCreator } from "./creator-scan.js";
 import { mountSwap, jupiterSwapUrl, BUY_SOL_AMOUNTS, lamportsFromSol, lamportsFromUsd } from "./swap.js";
+import { needsMoreSol } from "./wallet-logic.js";
+import { startWallet, walletPreview } from "./wallet-app.js";
 import { LAUNCH_ENABLED, brandLabel, copyrightNotice } from "./config.js";
 import { localPreviewKind } from "./account-logic.js";
 import { startAccounts } from "./account-ui.js";
@@ -126,6 +128,7 @@ let liveFeed = null;
 let ageTimer = 0;
 let welcomeDismissed = readWelcomeDismissed(storage);
 let introSeen = readIntroSeen(storage);
+let walletApp = null;
 let accounts = {
   hiveLead() { return ""; },
   noteHiveChange() {},
@@ -195,6 +198,12 @@ const actions = {
   setTokenTab,
   openTrade,
   closeTrade,
+  addFunds() {
+    if (walletApp) walletApp.openDeposit();
+  },
+  useExternalWallet(on) {
+    if (walletApp) walletApp.setExternal(on);
+  },
   sortHive,
   setNote,
   removeHive,
@@ -259,6 +268,24 @@ function boot() {
       render();
     },
   });
+  walletApp = startWallet({
+    storage,
+    accounts,
+    openSignIn: (tab) => accounts.openSignIn(tab || "create"),
+    getSolPrice: () => (majors.sol && majors.sol.price) || null,
+    lookupWallet,
+    loadSolana,
+    goWallet() {
+      history.pushState(null, "", walletPath(location.pathname));
+      render();
+    },
+    onWalletChange() {
+      const route = currentRoute();
+      if (route.name === "token") restartSwap(route.ca);
+    },
+  });
+  if (accounts.subscribe) accounts.subscribe(() => walletApp.syncSession());
+  walletApp.paint();
   liveFeed = createLiveFeed({
     storage,
     getSolPrice: () => (majors.sol && majors.sol.price) || null,
@@ -320,6 +347,7 @@ function render() {
   document.body.classList.toggle("is-profile", route.name === "profile" || route.name === "edit-profile");
   if (route.name !== "token") document.body.classList.remove("trade-open");
   syncChrome(route);
+  if (walletApp) walletApp.stop();
   if (route.name !== "launch") launchState.wallet = null;
   if (route.name === "token") showToken(gen, route.ca);
   else if (route.name === "hive") showHive(gen);
@@ -350,7 +378,7 @@ function syncChrome(route) {
   if (route.name === "home") document.title = "Honey Charts | Where the buzz starts";
   if (route.name === "hive") document.title = "Hive · Honey Charts";
   if (route.name === "launch") document.title = "Launch · Honey Charts";
-  if (route.name === "wallet") document.title = "Check a wallet · Honey Charts";
+  if (route.name === "wallet") document.title = route.wallet ? "Check a wallet · Honey Charts" : "Wallet · Honey Charts";
   if (route.name === "token") document.title = "Token · Honey Charts";
   if (route.name === "profile") document.title = "Profile · Honey Charts";
   if (route.name === "edit-profile") document.title = "Edit profile · Honey Charts";
@@ -717,10 +745,15 @@ async function loadSwap(gen, ca) {
   if (fallback) while (fallback.firstChild) fallback.removeChild(fallback.firstChild);
   if (status) status.textContent = "";
   try {
+    const walletState = walletApp ? await walletApp.jupiterState() : null;
     await mountSwap(ca, {
       side: swapView.side,
       solAmount: swapView.solAmount,
       lamports: swapView.lamports,
+      walletState,
+      onRequestConnectWallet() {
+        if (walletApp) walletApp.openDeposit();
+      },
     });
     if (ticket !== swapTicket || !alive(gen) || currentRoute().ca !== ca) return;
     const latest = view.querySelector("[data-swap-status]");
@@ -1574,6 +1607,20 @@ function hiveModel(extra = {}) {
   };
 }
 
+function honeyNeedsFunds() {
+  if (!walletApp || !walletApp.usingHoney()) return false;
+  const lamports = walletApp.solLamports();
+  if (typeof lamports !== "bigint") return false;
+  return needsMoreSol(lamports, currentBuyLamports());
+}
+
+function currentBuyLamports() {
+  if (swapView.side !== "buy") return null;
+  if (swapView.lamports) return swapView.lamports;
+  if (swapView.solAmount) return lamportsFromSol(swapView.solAmount);
+  return null;
+}
+
 function tokenModel(ca, extra) {
   const pair = extra.pair || null;
   const fallback = fallbackFor(ca);
@@ -1594,6 +1641,9 @@ function tokenModel(ca, extra) {
     swapSol: swapView.solAmount,
     swapLamports: swapView.lamports,
     solPrice: majors.sol && majors.sol.price,
+    needsFunds: honeyNeedsFunds(),
+    usingHoneyWallet: Boolean(walletApp && walletApp.usingHoney()),
+    honeyAvailable: Boolean(walletApp && walletApp.hasHoney()),
     tokenTab,
     trending: railTrending(),
     railOpen: boardUi.railOpen,
@@ -1771,6 +1821,10 @@ async function loadTokenCreator(gen, ca, pair, report, reportError, force) {
 }
 
 async function showWallet(gen, wallet, routeError, force) {
+  if (!wallet) {
+    if (walletApp) walletApp.open(view, walletPreview(location.search));
+    return;
+  }
   walletResult = walletResult && walletResult.wallet === wallet && !force ? walletResult : null;
   renderWallet(view, walletModel(wallet, routeError), actions);
   if (!wallet) return;

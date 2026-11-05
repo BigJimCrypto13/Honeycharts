@@ -1,0 +1,22 @@
+{
+  "name": "honeycharts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "build:wallet": "node scripts/build-privy.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "dependencies": {
+    "@privy-io/react-auth": "^3.51.2",
+    "@solana-program/memo": "^0.16.0",
+    "@solana-program/system": "^0.16.0",
+    "@solana-program/token": "^0.18.0",
+    "@solana/kit": "^8.6.0",
+    "uqr": "^0.1.3"
+  }
+}
