@@ -66,13 +66,16 @@ export async function mountSwap(ca, options = {}) {
   if (!mount) throw new Error("jupiter-mount");
   while (mount.firstChild) mount.removeChild(mount.firstChild);
 
-  // Wallet connection stays inside the plugin. Passthrough is off so this page
-  // never receives a wallet, a public key, or a signature request.
+  // External wallets stay inside Jupiter. The Honey Charts wallet is passed
+  // through only when walletState is set, and approval stays in Privy's window.
+  const walletState = options.walletState || null;
   window.Jupiter.init({
     displayMode: "integrated",
     integratedTargetId: "swap-mount",
     autoConnect: false,
-    enableWalletPassthrough: false,
+    enableWalletPassthrough: walletState ? true : false,
+    passthroughWalletContextState: walletState || undefined,
+    onRequestConnectWallet: options.onRequestConnectWallet,
     formProps: buildSwapForm(ca, options),
   });
   await waitForWidget();

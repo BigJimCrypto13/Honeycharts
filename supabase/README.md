@@ -127,4 +127,4 @@ Do not put the Google client secret in the repo. Supabase stores it.
 - Signed-out visitors keep the Hive that was already in the browser. Nothing is uploaded for them.
 - Follow and unfollow is on each public profile.
 
-Embedded wallets and the Hive vault are not in this step.
+The built-in Solana wallet and the Hive vault (Take offline) are a separate step. The clicks are in [WALLET.md](../WALLET.md). Leave `WALLET_ENABLED` false until the public Privy app id is pasted. Do not put a Privy app secret, a Supabase service role key, or a wallet secret in the repo.

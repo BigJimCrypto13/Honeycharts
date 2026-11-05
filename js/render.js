@@ -97,7 +97,7 @@ export function renderToken(root, model, actions) {
   rail.append(renderStats(model));
   article.append(mainCol);
   article.append(rail);
-  article.append(renderTradeDock(actions));
+  article.append(renderTradeDock(actions, model));
   article.append(el("button", {
     className: "trade-backdrop",
     attrs: { type: "button", "aria-label": "Close trade panel" },
@@ -712,13 +712,14 @@ function renderTokenMeta(model, actions) {
   return section;
 }
 
-function renderTradeDock(actions) {
+function renderTradeDock(actions, model) {
+  const needs = Boolean(model && model.needsFunds);
   const dock = el("div", { className: "trade-dock", attrs: { "data-region": "trade-dock" } });
   dock.append(el("button", {
     className: "dock-buy",
-    text: "Buy",
+    text: needs ? "Add funds" : "Buy",
     attrs: { type: "button", "aria-controls": "trade-panel", "aria-expanded": "false" },
-    on: { click: () => actions.openTrade("buy") },
+    on: { click: () => (needs ? actions.addFunds() : actions.openTrade("buy")) },
   }));
   dock.append(el("button", {
     className: "dock-sell",
@@ -791,6 +792,9 @@ function stat(label, value) {
 export function renderWallet(root, model, actions) {
   clear(root);
   const page = el("div", { className: "stack", attrs: { "data-wallet-lookup": "true" } });
+  page.append(el("p", {}, [
+    el("a", { attrs: { href: "./?view=wallet" }, text: "My wallet" }),
+  ]));
   page.append(el("section", { className: "hero" }, [
     el("h1", { text: "Check a wallet" }),
     el("p", {
@@ -1048,19 +1052,44 @@ function renderSwap(ca, model, actions) {
   } else {
     section.append(el("p", {
       className: "fine",
-      text: "Enter the sell amount in the Jupiter form. This page does not read your wallet, so it cannot fill a percent of your balance.",
+      text: model && model.usingHoneyWallet
+        ? "The sell uses your Honey Charts wallet. Enter the amount in Jupiter, then approve it in Privy's window."
+        : "Enter the sell amount in the Jupiter form. This page does not read an external wallet, so it cannot fill a percent of that balance.",
     }));
   }
+  if (model && model.needsFunds && side === "buy") {
+    section.append(el("button", {
+      className: "primary swap-go",
+      text: "Add funds",
+      attrs: { type: "button" },
+      on: { click: () => actions.addFunds() },
+    }));
+    section.append(el("p", { className: "fine", text: "This wallet does not have enough SOL for that buy." }));
+  }
   section.append(el("button", {
-    className: side === "sell" ? "swap-go swap-go-sell" : "primary swap-go",
+    className: model && model.needsFunds && side === "buy"
+      ? "ghost swap-go"
+      : side === "sell" ? "swap-go swap-go-sell" : "primary swap-go",
     text: side === "buy" ? `Buy ${symbol} in Jupiter` : `Sell ${symbol} in Jupiter`,
     attrs: { type: "button" },
     on: { click: () => actions.applySwapAmount() },
   }));
   section.append(el("p", {
     className: "fine",
-    text: "The button only fills Jupiter. You connect and sign in your own wallet. Honey Charts never sees your keys.",
+    text: model && model.usingHoneyWallet
+      ? "The button fills Jupiter and pays from your Honey Charts wallet. You still approve the swap in Privy's window. Honey Charts never sees your keys."
+      : "The button only fills Jupiter. You connect and approve in your own wallet. Honey Charts never sees your keys.",
   }));
+  if (model && model.honeyAvailable) {
+    section.append(el("button", {
+      className: "ghost",
+      text: model.usingHoneyWallet
+        ? "Use Phantom, Solflare, or Backpack instead"
+        : "Use my Honey Charts wallet",
+      attrs: { type: "button" },
+      on: { click: () => actions.useExternalWallet(!model.usingHoneyWallet) },
+    }));
+  }
   section.append(renderTradeWallets({
     onEmail: () => actions.openSignIn && actions.openSignIn("create"),
     onInstalled: () => {
@@ -1085,7 +1114,9 @@ function renderSwap(ca, model, actions) {
   }));
   section.append(el("p", {
     className: "fine",
-    text: "Connect Phantom, Solflare, or another wallet in Jupiter's picker. Approval stays in that wallet. Honeycharts never sees your keys.",
+    text: model && model.usingHoneyWallet
+      ? "Phantom, Solflare, and Backpack still work if you switch to them. The swap keeps the 0.5% Honeycharts fee."
+      : "Connect Phantom, Solflare, or Backpack in Jupiter's picker. Approval stays in that wallet. Honeycharts never sees your keys.",
   }));
   return section;
 }

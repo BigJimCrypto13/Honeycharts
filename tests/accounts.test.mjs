@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { FEE_BPS, JUPITER_REFERRAL_ACCOUNT, LAUNCH_ENABLED } from "../js/config.js";
-import { GOOGLE_AUTH_ENABLED, SUPABASE_ANON_KEY, SUPABASE_URL } from "../js/auth-config.js";
+import { GOOGLE_AUTH_ENABLED, HELIUS_API_KEY, PRIVY_APP_ID, SUPABASE_ANON_KEY, SUPABASE_URL, WALLET_ENABLED } from "../js/auth-config.js";
 import { editProfilePath, profilePath, routeFromSearch } from "../js/paths.js";
 import {
   ACCOUNTS_OFFLINE,
@@ -210,6 +210,9 @@ describe("account routes and flags", () => {
     assert.equal(FEE_BPS, 50);
     assert.equal(LAUNCH_ENABLED, false);
     assert.equal(GOOGLE_AUTH_ENABLED, false);
+    assert.equal(WALLET_ENABLED, false);
+    assert.equal(PRIVY_APP_ID, "");
+    assert.equal(HELIUS_API_KEY, "");
     assert.equal(SUPABASE_URL, "https://hqqmarbovsgvyfjzxqjj.supabase.co");
     assert.match(SUPABASE_ANON_KEY, /^sb_publishable_/);
     const accounts = readFileSync(new URL("../js/accounts.js", import.meta.url), "utf8");
@@ -227,7 +230,7 @@ describe("account routes and flags", () => {
     assert.match(ui, /type: authCodeType\(authView\.mode\)/);
     assert.match(ui, /text: "Play"/);
     assert.doesNotMatch(ui, /autoplay/);
-    assert.match(swap, /enableWalletPassthrough: false/);
+    assert.match(swap, /enableWalletPassthrough: walletState \? true : false/);
     assert.doesNotMatch(accounts + ui, /signTransaction|service_role/);
     const authWallet = readFileSync(new URL("../js/auth-wallet.js", import.meta.url), "utf8");
     const wallet = readFileSync(new URL("../js/wallet.js", import.meta.url), "utf8");
